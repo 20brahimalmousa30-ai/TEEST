@@ -1,0 +1,292 @@
+"use client";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card } from "@/components/ui/Card";
+import { Pill } from "@/components/ui/Pill";
+import { Button } from "@/components/ui/Button";
+import { Modal, Confirm } from "@/components/ui/Modal";
+import { Field } from "@/components/ui/Field";
+import { useStore } from "@/lib/store/StoreProvider";
+import { copyText } from "@/lib/download";
+
+const sar = (n: number) => new Intl.NumberFormat("ar-SA-u-nu-latn").format(n);
+const grades = ["الأول ثانوي", "الثاني ثانوي", "الثالث ثانوي"];
+const sections = ["ريادة", "علو", "قيادة"] as const;
+
+export default function StudentDetail() {
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const { students, teams, updateStudent, deleteStudent, moveStudent, setPayment } = useStore();
+  const [editOpen, setEditOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
+  const [delOpen, setDelOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const s = students.find(x => x.id === params.id);
+  const [form, setForm] = useState({
+    name: s?.name ?? "", phone: s?.phone ?? "",
+    grade: s?.grade ?? grades[0], section: (s?.section ?? sections[0]) as (typeof sections)[number],
+    emergencyContact: s?.emergencyContact ?? "", emergencyPhone: s?.emergencyPhone ?? "",
+  });
+  const [moveTo, setMoveTo] = useState(s?.teamId ?? "");
+  const [payAmt, setPayAmt] = useState(s?.paidAmount ?? 0);
+
+  useEffect(() => {
+    if (s) {
+      document.title = `${s.name} — معالي أبها`;
+      setForm({
+        name: s.name, phone: s.phone, grade: s.grade, section: s.section,
+        emergencyContact: s.emergencyContact, emergencyPhone: s.emergencyPhone,
+      });
+      setMoveTo(s.teamId); setPayAmt(s.paidAmount);
+    }
+  }, [s]);
+
+  if (!s) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 py-16 text-center">
+        <p className="text-text-2">لم أعثر على هذا الشاب. قد يكون قد حُذف.</p>
+        <Link href="/students" className="mt-4 inline-block text-accent hover:underline">عودة للقائمة →</Link>
+      </div>
+    );
+  }
+
+  const team = teams.find(t => t.id === s.teamId);
+  const parentLink = `${typeof window !== "undefined" ? window.location.origin : ""}/parent/${s.id}?token=demo`;
+
+  function saveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    updateStudent(s!.id, { ...form });
+    setEditOpen(false);
+  }
+  function saveMove(e: React.FormEvent) {
+    e.preventDefault();
+    if (moveTo !== s!.teamId) moveStudent(s!.id, moveTo);
+    setMoveOpen(false);
+  }
+  function savePay(e: React.FormEvent) {
+    e.preventDefault();
+    const amt = Math.max(0, Math.min(s!.totalAmount, payAmt));
+    const status = amt >= s!.totalAmount ? "PAID" : amt > 0 ? "PARTIAL" : "PENDING";
+    setPayment(s!.id, status, amt);
+    setPayOpen(false);
+  }
+  async function copyLink() {
+    const ok = await copyText(parentLink);
+    if (ok) { setCopied(true); setTimeout(() => setCopied(false), 2000); }
+  }
+
+  return (
+    <div className="mx-auto max-w-[1180px] px-6 py-8">
+      <PageHeader
+        eyebrow="الشاب · بطاقةٌ شخصيّة"
+        crumbs={[{ href: "/students", label: "الشباب" }, { label: s.name }]}
+        title={s.name}
+        subtitle={`${s.grade} · ${s.section} · ينتمي لفريق ${team?.name ?? "—"}`}
+      />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1.4fr]">
+        <div className="flex flex-col gap-6">
+          <Card padded={false}>
+            <div className="flex items-center gap-4 border-b border-line p-6">
+              <div className="grid h-16 w-16 place-items-center rounded-full bg-accent text-[24px] font-semibold" style={{ color: "#F4EEE2" }}>
+                {s.name.split(" ")[0]?.[0]}
+              </div>
+              <div>
+                <div className="text-[18px] font-semibold text-text">{s.name}</div>
+                <div className="mt-1 text-[12.5px] text-text-3">الهويّة: <span className="num text-text-2">{s.nationalIdMasked}</span></div>
+              </div>
+            </div>
+            <dl className="divide-y divide-line">
+              {[
+                ["الجوّال", <span key="p" className="num">{s.phone}</span>],
+                ["الصف", s.grade],
+                ["القسم", s.section],
+                ["الفريق", <Link key="t" href={`/teams/${s.teamId}`} className="text-accent hover:underline">فريق {team?.name ?? "—"}</Link>],
+                ["نقاطه", <span key="pt" className="num">{s.points}</span>],
+                ["نسبة الحضور", <span key="a" className="num">{s.attendance}%</span>],
+              ].map(([k, v]) => (
+                <div key={k as string} className="grid grid-cols-[110px_1fr] gap-4 px-6 py-3 text-[13.5px]">
+                  <dt className="text-text-3">{k}</dt>
+                  <dd className="text-text">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </Card>
+
+          <Card title="بيانات الطوارئ">
+            <div className="grid gap-3 text-[13.5px]">
+              <div className="flex items-baseline justify-between border-b border-line pb-2">
+                <span className="text-text-3">جهة الاتصال</span><span className="text-text">{s.emergencyContact}</span>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-text-3">الرقم</span><span className="num text-text">{s.emergencyPhone}</span>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        <div className="flex flex-col gap-6">
+          <Card title="حالة السداد">
+            <div className="mb-4 flex items-baseline justify-between">
+              <div>
+                <div className="text-[12px] text-text-3">المسدَّد من الإجمالي</div>
+                <div className="num mt-1 text-[24px] text-text">{sar(s.paidAmount)} <span className="text-[13px] text-text-3">/ {sar(s.totalAmount)} SAR</span></div>
+              </div>
+              <Pill variant={s.paymentStatus === "PAID" ? "ok" : s.paymentStatus === "PARTIAL" ? "warn" : "critical"}>
+                {s.paymentStatus === "PAID" ? "مسدَّد بالكامل" : s.paymentStatus === "PARTIAL" ? "سدادٌ جزئي" : "بانتظار السداد"}
+              </Pill>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-surface-alt/40">
+              <div className="h-full transition-[width]" style={{
+                width: `${(s.paidAmount / s.totalAmount) * 100}%`,
+                background: s.paymentStatus === "PAID" ? "var(--ok)" : "var(--accent-warm)"
+              }} />
+            </div>
+            <div className="mt-4">
+              <Button variant="outline" onClick={() => setPayOpen(true)}>تعديل المبلغ المسدَّد</Button>
+            </div>
+          </Card>
+
+          <Card title="الإجراءات">
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setLinkOpen(true)}>🔗 إرسال رابط ولي الأمر</Button>
+              <Button variant="outline" onClick={() => setEditOpen(true)}>✎ تعديل البيانات</Button>
+              <Button variant="outline" onClick={() => setMoveOpen(true)}>↔ نقل إلى فريقٍ آخر</Button>
+              <Button variant="danger"  onClick={() => setDelOpen(true)}>🗑 إخراجٌ من الرحلة</Button>
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* Edit modal */}
+      <Modal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="تعديل بيانات الشاب"
+        footer={
+          <>
+            <Button variant="outline" type="button" onClick={() => setEditOpen(false)}>إلغاء</Button>
+            <Button type="submit" form="edit-student">حفظ التعديلات</Button>
+          </>
+        }
+      >
+        <form id="edit-student" onSubmit={saveEdit} className="grid gap-4">
+          <Field label="الاسم" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
+          <Field label="الجوّال" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">الصف</span>
+              <select value={form.grade} onChange={e => setForm({ ...form, grade: e.target.value })} className="w-full rounded border border-line-strong bg-surface px-3 py-2 text-[14px]">
+                {grades.map(g => <option key={g}>{g}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">القسم</span>
+              <select value={form.section} onChange={e => setForm({ ...form, section: e.target.value as (typeof sections)[number] })} className="w-full rounded border border-line-strong bg-surface px-3 py-2 text-[14px]">
+                {sections.map(x => <option key={x}>{x}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="جهة الطوارئ" value={form.emergencyContact} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} />
+            <Field label="رقم الطوارئ" value={form.emergencyPhone} onChange={e => setForm({ ...form, emergencyPhone: e.target.value })} />
+          </div>
+        </form>
+      </Modal>
+
+      {/* Move modal */}
+      <Modal
+        open={moveOpen}
+        onClose={() => setMoveOpen(false)}
+        title="نقلٌ إلى فريقٍ آخر"
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" type="button" onClick={() => setMoveOpen(false)}>إلغاء</Button>
+            <Button type="submit" form="move-student" disabled={moveTo === s.teamId}>نقل الشاب</Button>
+          </>
+        }
+      >
+        <form id="move-student" onSubmit={saveMove} className="grid gap-3">
+          <p className="text-[13px] text-text-2">اختر الفريق الجديد لـ<b>{s.name}</b>:</p>
+          <div className="grid gap-2">
+            {teams.map(t => (
+              <label key={t.id} className={`flex cursor-pointer items-center gap-3 rounded border p-3 ${moveTo === t.id ? "border-accent bg-accent/5" : "border-line hover:border-accent-warm"}`}>
+                <input type="radio" name="team" value={t.id} checked={moveTo === t.id} onChange={() => setMoveTo(t.id)} className="accent-[color:var(--accent)]" />
+                <span className="h-3 w-3 rounded" style={{ background: t.color }} />
+                <span className="text-[13.5px] text-text">فريق {t.name}</span>
+                {t.id === s.teamId && <span className="ms-auto text-[11px] text-text-3">(الحالي)</span>}
+              </label>
+            ))}
+          </div>
+        </form>
+      </Modal>
+
+      {/* Payment modal */}
+      <Modal
+        open={payOpen}
+        onClose={() => setPayOpen(false)}
+        title="تعديل مبلغ السداد"
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" type="button" onClick={() => setPayOpen(false)}>إلغاء</Button>
+            <Button type="submit" form="pay-form">حفظ</Button>
+          </>
+        }
+      >
+        <form id="pay-form" onSubmit={savePay} className="grid gap-3">
+          <Field
+            label={`المبلغ المسدَّد (بحد أقصى ${sar(s.totalAmount)})`}
+            type="number" min={0} max={s.totalAmount}
+            value={payAmt} onChange={e => setPayAmt(Number(e.target.value))}
+          />
+          <div className="flex gap-2">
+            <Button variant="outline" type="button" onClick={() => setPayAmt(0)}>صفر</Button>
+            <Button variant="outline" type="button" onClick={() => setPayAmt(Math.round(s.totalAmount / 2))}>نصف</Button>
+            <Button variant="outline" type="button" onClick={() => setPayAmt(s.totalAmount)}>كامل</Button>
+          </div>
+          <p className="mt-2 text-[12px] text-text-3">
+            الحالة الجديدة: <b className="text-text">{payAmt >= s.totalAmount ? "مسدَّد بالكامل" : payAmt > 0 ? "سدادٌ جزئي" : "بانتظار السداد"}</b>
+          </p>
+        </form>
+      </Modal>
+
+      {/* Parent link modal */}
+      <Modal
+        open={linkOpen}
+        onClose={() => setLinkOpen(false)}
+        title="رابط ولي الأمر"
+        subtitle="رابطٌ خاصٌّ يفتح بطاقةَ الشاب فقط، بدون حسابٍ كامل."
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setLinkOpen(false)}>إغلاق</Button>
+            <Button onClick={copyLink}>{copied ? "✓ تم النسخ" : "نسخ الرابط"}</Button>
+          </>
+        }
+      >
+        <div className="rounded border border-line bg-bg-raised px-3 py-2 text-[12px]">
+          <code className="lat text-accent break-all">{parentLink}</code>
+        </div>
+        <p className="mt-3 text-[12px] text-text-3">أرسله لولي الأمر عبر واتساب أو الرسائل — لا يحتاج تسجيل دخول.</p>
+      </Modal>
+
+      {/* Delete confirm */}
+      <Confirm
+        open={delOpen}
+        onClose={() => setDelOpen(false)}
+        onConfirm={() => { deleteStudent(s!.id); router.push("/students"); }}
+        title={`إخراج ${s.name} من الرحلة؟`}
+        message="سيُحذف الشاب وكلّ نقاطه وسجلّات حضوره. هذا الإجراء لا يمكن التراجع عنه في النسخة التجريبية."
+        confirmLabel="نعم، أخرِجه"
+        danger
+      />
+    </div>
+  );
+}

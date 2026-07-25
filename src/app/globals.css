@@ -1,26 +1,227 @@
 @import "tailwindcss";
 
+/* ─────────────────── PALETTE (Maali brand) ─────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  --jabal:    #1E4635;
+  --jabal-2:  #2A5C48;
+  --shams:    #B8955A;
+  --shams-2:  #A17F45;
+  --tin:      #F4EEE2;
+  --rimal:    #E8DDC7;
+  --rimal-2:  #DBCCB0;
+  --faham:    #1A211D;
+  --faham-2:  #4A544E;
+  --faham-3:  #7A857F;
+  --layl:     #0F1512;
+  --layl-2:   #1A2320;
+  --layl-3:   #2A342F;
+  --fajr:     #B54A2E;
+  --waha:     #5F8A5C;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* semantic — light */
+  --bg:            var(--tin);
+  --bg-raised:     #FBF7EE;
+  --surface:       #FFFFFF;
+  --surface-alt:   var(--rimal);
+  --text:          var(--faham);
+  --text-2:        var(--faham-2);
+  --text-3:        var(--faham-3);
+  --line:          var(--rimal-2);
+  --line-strong:   #C8B999;
+  --accent:        var(--jabal);
+  --accent-hover:  var(--jabal-2);
+  --accent-warm:   var(--shams);
+  --accent-warm-2: var(--shams-2);
+  --critical:      var(--fajr);
+  --ok:            var(--waha);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg:            var(--layl);
+    --bg-raised:     var(--layl-2);
+    --surface:       var(--layl-2);
+    --surface-alt:   var(--layl-3);
+    --text:          #EEE7D5;
+    --text-2:        #C4BDA8;
+    --text-3:        #8A8574;
+    --line:          #2E3833;
+    --line-strong:   #3E4A44;
+    --accent:        #6FA98A;
+    --accent-hover:  #7EB999;
+    --accent-warm:   #D4B47B;
+    --accent-warm-2: #C4A567;
+    --critical:      #D06349;
+    --ok:            #85B37F;
   }
 }
 
+/* ─────────────────── Tailwind v4 theme mapping ─────────────────── */
+@theme inline {
+  --color-bg:            var(--bg);
+  --color-bg-raised:     var(--bg-raised);
+  --color-surface:       var(--surface);
+  --color-surface-alt:   var(--surface-alt);
+  --color-text:          var(--text);
+  --color-text-2:        var(--text-2);
+  --color-text-3:        var(--text-3);
+  --color-line:          var(--line);
+  --color-line-strong:   var(--line-strong);
+  --color-accent:        var(--accent);
+  --color-accent-hover:  var(--accent-hover);
+  --color-accent-warm:   var(--accent-warm);
+  --color-accent-warm-2: var(--accent-warm-2);
+  --color-critical:      var(--critical);
+  --color-ok:            var(--ok);
+
+  --font-sans:    var(--font-cairo), 'Sakkal Majalla', 'Segoe UI', system-ui, sans-serif;
+  --font-display: var(--font-messiri), var(--font-cairo), 'Sakkal Majalla', 'Segoe UI', serif;
+  --font-serif:   var(--font-playfair), Georgia, serif;
+  --font-mono:    var(--font-jetbrains), ui-monospace, Consolas, monospace;
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+/* ─────────────────── Base ─────────────────── */
+html { direction: rtl; }
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-cairo), 'Sakkal Majalla', 'Segoe UI', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+::selection { background: var(--accent-warm); color: var(--faham); }
+
+.lat  { font-family: var(--font-playfair), Georgia, serif; direction: ltr; unicode-bidi: isolate; }
+.num  { font-family: var(--font-jetbrains), ui-monospace, Consolas, monospace;
+        direction: ltr; unicode-bidi: isolate; font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.disp { font-family: var(--font-messiri), var(--font-cairo), serif; }
+
+.eyebrow {
+  font-family: var(--font-playfair), Georgia, serif;
+  direction: ltr; unicode-bidi: isolate;
+  text-transform: uppercase; letter-spacing: .22em;
+  font-size: 11px; color: var(--text-3);
+  font-style: italic;
+}
+
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--accent-warm);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* ── Registration background marquee bars (Ticker) ───────────────────── */
+.marquee-row {
+  position: absolute;
+  inset-inline: 0;
+  display: flex;
+  width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+.marquee-track {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 3rem;
+  padding-inline: 1.5rem;
+  will-change: transform;
+  animation-name: marquee;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.marquee-item {
+  font-family: var(--font-messiri), var(--font-cairo), serif;
+  font-size: clamp(1.5rem, 4vw, 2.6rem);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.marquee-warm  { color: rgba(184, 149, 90, 0.16); }
+.marquee-green { color: rgba(30, 70, 53, 0.16); }
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* ── App shell layout (classic fixed sidebar) ────────────────────────────
+   Defined here (not as Tailwind utilities) because the shell lives on an
+   Arabic-named path that Tailwind's content scanner skips, so arbitrary
+   utilities used only there (grid-cols-[260px_1fr], w-[280px], …) never get
+   generated. Plain CSS in the entry file is always emitted. */
+.app-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  min-height: 100vh;
+}
+.app-sidebar { display: none; }
+.app-mobilebar { display: flex; }
+
+@media (min-width: 1024px) {
+  .app-grid { grid-template-columns: 260px 1fr; }
+  .app-sidebar {
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+  }
+  .app-mobilebar { display: none; }
+  .app-drawer-wrap { display: none !important; }
+}
+
+/* Mobile drawer (slides in from the right — RTL) */
+.app-drawer-wrap { position: fixed; inset: 0; z-index: 50; }
+.app-drawer-wrap[data-open="false"] { pointer-events: none; }
+.app-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  transition: opacity 0.2s ease;
+}
+.app-drawer-wrap[data-open="false"] .app-scrim { opacity: 0; }
+.app-drawer-wrap[data-open="true"]  .app-scrim { opacity: 1; }
+.app-drawer {
+  position: absolute;
+  inset-block: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+  max-width: 84vw;
+  transform: translateX(100%);
+  transition: transform 0.2s ease;
+}
+.app-drawer-wrap[data-open="true"] .app-drawer { transform: translateX(0); }
+
+/* ── Registration settings grids ──────────────────────────────────────────
+   Same Arabic-path caveat as the app shell: the arbitrary grid utilities
+   (grid-cols-[1.35fr_1fr], grid-cols-[auto_1fr_auto_auto_auto]) used only on
+   this page never get generated, so the columns collapse. Named classes are
+   always emitted. */
+.reg-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+@media (min-width: 1024px) {
+  .reg-layout { grid-template-columns: 1.35fr 1fr; }
+}
+.reg-fieldrow {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  align-items: center;
+  gap: 1rem;
 }
