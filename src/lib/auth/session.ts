@@ -6,7 +6,7 @@ const KEY = "maali.session.v1";
 
 export function saveSession(account: DemoAccount): Session {
   const session: Session = {
-    email: account.email,
+    phone: account.phone,
     name: account.name,
     role: account.role,
     isOwner: account.isOwner,

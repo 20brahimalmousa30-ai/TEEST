@@ -1,11 +1,6 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Team, Student, Supervisor, Committee, Invoice, PaymentStatus, ApprovalStatus } from "@/lib/mock/types";
-import { teams as initialTeams } from "@/lib/mock/teams";
-import { students as initialStudents } from "@/lib/mock/students";
-import { supervisors as initialSupervisors } from "@/lib/mock/supervisors";
-import { committees as initialCommittees } from "@/lib/mock/committees";
-import { invoices as initialInvoices } from "@/lib/mock/invoices";
 
 export type RegField = {
   key: string; label: string; type: string; required: boolean; active: boolean; desc: string;
@@ -43,11 +38,11 @@ export type State = {
 };
 
 const initialState: State = {
-  teams:        initialTeams,
-  students:     initialStudents,
-  supervisors:  initialSupervisors,
-  committees:   initialCommittees,
-  invoices:     initialInvoices,
+  teams:        [],
+  students:     [],
+  supervisors:  [],
+  committees:   [],
+  invoices:     [],
   regFields:    initialFields,
   regOpen:      true,
   attendance:   {},
@@ -102,7 +97,7 @@ type Store = State & StoreActions & { hydrated: boolean };
 
 const StoreContext = createContext<Store | null>(null);
 
-const STORAGE_KEY = "maali.store.v1";
+const STORAGE_KEY = "maali.store.v2";
 const uid = (prefix: string) => `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {

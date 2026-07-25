@@ -135,7 +135,7 @@ export default function RegistrationSettingsPage() {
             </div>
             <p className="mt-3 text-[12px] text-text-3">
               {regOpen
-                ? "التسجيل مفتوحٌ حاليّاً. أُغلق تلقائياً عند اكتمال ٤٥٠ مسجّلاً."
+                ? "التسجيل مفتوحٌ حاليّاً. يُغلق تلقائياً عند اكتمال العدد المطلوب."
                 : "التسجيل مُغلق. لن يُقبل مسجّلون جدد."}
             </p>
           </Card>

@@ -17,16 +17,16 @@ const fullNav: NavGroup[] = [
     label: "الفعاليّة",
     items: [
       { href: "/dashboard",   label: "نظرةٌ عامّة", icon: <IconHome /> },
-      { href: "/teams",       label: "الفرق",       icon: <IconTeams />,      count: "١٢" },
-      { href: "/committees",  label: "اللجان",       icon: <IconCommittee />,  count: "٧" },
-      { href: "/students",    label: "الشباب",        icon: <IconStudents />,   count: "٤٥٠" },
-      { href: "/supervisors", label: "المشرفون",     icon: <IconSupervisor />, count: "١٤" },
+      { href: "/teams",       label: "الفرق",       icon: <IconTeams /> },
+      { href: "/committees",  label: "اللجان",       icon: <IconCommittee /> },
+      { href: "/students",    label: "الشباب",        icon: <IconStudents /> },
+      { href: "/supervisors", label: "المشرفون",     icon: <IconSupervisor /> },
     ],
   },
   {
     label: "المالي والنقاط",
     items: [
-      { href: "/invoices",    label: "الفواتير",       icon: <IconInvoice />, count: "١٥" },
+      { href: "/invoices",    label: "الفواتير",       icon: <IconInvoice /> },
       { href: "/leaderboard", label: "قائمة الصدارة",  icon: <IconTrophy /> },
     ],
   },

@@ -7,7 +7,6 @@ import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { TeamBadge } from "@/components/ui/TeamBadge";
 import { useStore } from "@/lib/store/StoreProvider";
-import { activity } from "@/lib/mock/activity";
 
 const sar = (n: number) => new Intl.NumberFormat("ar-SA-u-nu-latn").format(n);
 
@@ -43,7 +42,7 @@ export default function DashboardPage() {
       />
 
       <section className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard label="الشباب" value={<>{summary.total}<span className="text-[12px] text-text-3 ms-1">/ 450</span></>} sub={`نسبة الاكتمال ${Math.round((summary.total / 450) * 100)}٪`} />
+        <KpiCard label="الشباب" value={summary.total} sub={summary.total ? `${summary.paid} مسدَّد` : "لا مسجّلين بعد"} />
         <KpiCard label="نسبة السداد" value={`${collectedPct}%`} sub={`${sar(summary.collected)} / ${sar(summary.target)} SAR`} variant="ok" />
         <KpiCard label="فواتير معلّقة" value={invSummary.pendingCount} sub={`${sar(invSummary.pending)} SAR`} variant="warn" />
         <KpiCard label="فواتير متأخّرة" value={invSummary.overdueCount} sub={`${sar(invSummary.overdue)} SAR`} variant="critical" />
@@ -76,22 +75,7 @@ export default function DashboardPage() {
           </Card>
 
           <Card title="آخر النشاط" action={<span className="text-[12px] text-text-3">تحديثٌ مباشر</span>} padded={false}>
-            <ul>
-              {activity.slice(0, 6).map(a => (
-                <li key={a.id} className="grid grid-cols-[auto_1fr_auto] items-baseline gap-4 border-b border-line px-5 py-3 last:border-b-0">
-                  <span className={`mt-1 h-2 w-2 rounded-full ${a.kind === "add" ? "bg-ok" : a.kind === "edit" ? "bg-accent-warm" : a.kind === "remove" ? "bg-critical" : a.kind === "pay" ? "bg-accent" : "bg-text-3"}`} />
-                  <div>
-                    <div className="text-[13.5px] text-text">
-                      <span className="text-text-2">{a.actor}</span>
-                      <span className="mx-1.5 text-text-3">·</span>{a.action}
-                      <span className="mx-1.5 text-text-3">→</span>
-                      <span className="text-text">{a.target}</span>
-                    </div>
-                  </div>
-                  <span className="whitespace-nowrap text-[11.5px] text-text-3">{a.time}</span>
-                </li>
-              ))}
-            </ul>
+            <div className="px-5 py-10 text-center text-[13px] text-text-3">لا نشاطَ بعد — ستظهر آخر العمليّات هنا.</div>
           </Card>
         </div>
 

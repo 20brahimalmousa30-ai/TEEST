@@ -48,7 +48,7 @@ export default function LeaderboardPage() {
           </ol>
         </Card>
 
-        <Card title="أفضل ١٢ فرداً" padded={false}>
+        <Card title="الأفراد الأعلى نقاطاً" padded={false}>
           <ol className="divide-y divide-line">
             {rankedStudents.map((s, i) => (
               <li key={s.id} className="grid grid-cols-[24px_1fr_auto] items-center gap-3 px-5 py-2.5">

@@ -103,13 +103,10 @@ export default function LandingPage() {
       {/* ── Stats bar (facts) ──────────────────────────────────────── */}
       <section className="relative mx-auto mb-4 max-w-5xl px-6">
         <div className="rounded-lg border border-line bg-surface/60 px-6 py-5 backdrop-blur">
-          <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          <dl className="grid grid-cols-3 gap-4">
             {[
               ["الاسم", "معالي أبها"],
               ["السنة", "١٤٤٨هـ"],
-              ["الشباب", "٤٥٠"],
-              ["الفرق", "١٢"],
-              ["اللجان", "٧"],
               ["الأيام", "٨"],
             ].map(([k, v]) => (
               <div key={k} className="text-center">

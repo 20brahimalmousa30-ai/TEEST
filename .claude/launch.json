@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "maali-dev",
+      "runtimeExecutable": "C:\\Users\\D8C9~1\\Desktop\\3956~1\\web\\node_modules\\.bin\\next.cmd",
+      "runtimeArgs": ["dev", "C:\\Users\\D8C9~1\\Desktop\\3956~1\\web", "--webpack"],
+      "port": 3000,
+      "autoPort": true,
+      "env": {
+        "WATCHPACK_POLLING": "true",
+        "CHOKIDAR_USEPOLLING": "1"
+      }
+    }
+  ]
+}
