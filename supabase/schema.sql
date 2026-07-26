@@ -53,6 +53,17 @@ create table if not exists committees (
   color          text not null default '#1E4635'
 );
 
+-- ── ربط المشرفين بالفرق واللجان (many-to-many حقيقي) ──────────────────────
+-- المصدر الوحيد لعلاقة «المشرف يُشرف على فريق/لجنة». يحلّ محلّ:
+--   supervisors.team_ids · supervisors.committee_ids · committees.supervisor_ids
+create table if not exists supervisor_assignments (
+  supervisor_id text not null references supervisors(id) on delete cascade,
+  target_kind   text not null check (target_kind in ('team','committee')),
+  target_id     text not null,
+  primary key (supervisor_id, target_kind, target_id)
+);
+create index if not exists idx_sa_target on supervisor_assignments (target_kind, target_id);
+
 -- ── الشباب (الطلاب) ──────────────────────────────────────────────────────
 create table if not exists students (
   id                 text primary key,
@@ -166,4 +177,104 @@ as $$
   where phone = p_phone
     and code_hash = crypt(p_code, code_hash)
   limit 1;
+$$;
+
+-- تغيير رمز الدخول ذاتياً: يتحقّق من الرمز الحالي ثم يُحدّث التشفير في عمليّةٍ ذرّيّة.
+-- يُعيد true إن نجح التحقّق والتحديث، و false إن كان الرمز الحالي خاطئاً.
+create or replace function set_login_code(p_phone text, p_current text, p_new text)
+returns boolean
+language plpgsql
+as $$
+declare
+  matched integer;
+begin
+  update profiles
+    set code_hash = crypt(p_new, gen_salt('bf'))
+    where phone = p_phone
+      and code_hash = crypt(p_current, code_hash);
+  get diagnostics matched = row_count;
+  return matched > 0;
+end;
+$$;
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  ترحيل: نقل علاقات المشرفين من المصفوفات القديمة إلى جدول الربط
+--  (آمنٌ لإعادة التشغيل — يُنفَّذ مرّةً ثمّ يحذف الأعمدة القديمة)
+-- ═══════════════════════════════════════════════════════════════════════
+do $$
+begin
+  -- من supervisors.team_ids
+  if exists (select 1 from information_schema.columns
+             where table_name='supervisors' and column_name='team_ids') then
+    insert into supervisor_assignments (supervisor_id, target_kind, target_id)
+    select s.id, 'team', t from supervisors s, unnest(s.team_ids) as t
+    where t <> ''
+    on conflict do nothing;
+    alter table supervisors drop column team_ids;
+  end if;
+
+  -- من supervisors.committee_ids
+  if exists (select 1 from information_schema.columns
+             where table_name='supervisors' and column_name='committee_ids') then
+    insert into supervisor_assignments (supervisor_id, target_kind, target_id)
+    select s.id, 'committee', c from supervisors s, unnest(s.committee_ids) as c
+    where c <> ''
+    on conflict do nothing;
+    alter table supervisors drop column committee_ids;
+  end if;
+
+  -- من committees.supervisor_ids
+  if exists (select 1 from information_schema.columns
+             where table_name='committees' and column_name='supervisor_ids') then
+    insert into supervisor_assignments (supervisor_id, target_kind, target_id)
+    select sup, 'committee', c.id from committees c, unnest(c.supervisor_ids) as sup
+    where sup <> '' and exists (select 1 from supervisors s where s.id = sup)
+    on conflict do nothing;
+    alter table committees drop column supervisor_ids;
+  end if;
+
+  -- من teams.supervisor_id (قائد الفريق الواحد يُصبح أيضاً «مُشرفاً على» الفريق)
+  insert into supervisor_assignments (supervisor_id, target_kind, target_id)
+  select t.supervisor_id, 'team', t.id from teams t
+  where t.supervisor_id is not null and t.supervisor_id <> ''
+    and exists (select 1 from supervisors s where s.id = t.supervisor_id)
+  on conflict do nothing;
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  الملكيّة (is_owner): أميرٌ أصلٌ واحدٌ فقط، ونقلٌ ذرّيٌّ محميّ
+-- ═══════════════════════════════════════════════════════════════════════
+-- ثابتٌ في القاعدة: لا يمكن وجود أكثر من صاحب ملكيّةٍ واحد في آنٍ واحد.
+create unique index if not exists profiles_single_owner
+  on profiles (is_owner) where is_owner = true;
+
+-- إنشاء حسابِ مشرفٍ إداريّ (نائب أمير) برمزٍ مُشفَّر.
+create or replace function create_admin(p_id text, p_phone text, p_code text, p_name text, p_role text)
+returns void
+language sql
+as $$
+  insert into profiles (id, phone, code_hash, name, role, is_owner, landing)
+  values (p_id, p_phone, crypt(p_code, gen_salt('bf')), p_name, p_role, false, '/dashboard');
+$$;
+
+-- نقل الملكيّة ذرّياً: يخفض المالكَ الحاليّ ثمّ يرفع الهدف — دون خرق قيد المالك الواحد.
+-- يُعيد true إن كان p_from_phone هو المالك الحاليّ فعلاً والهدف موجود.
+create or replace function transfer_ownership(p_from_phone text, p_to_id text)
+returns boolean
+language plpgsql
+as $$
+declare
+  demoted integer;
+  promoted integer;
+begin
+  update profiles set is_owner = false
+    where phone = p_from_phone and is_owner = true;
+  get diagnostics demoted = row_count;
+  if demoted = 0 then return false; end if;
+
+  update profiles set is_owner = true, role = 'PRINCE'
+    where id = p_to_id;
+  get diagnostics promoted = row_count;
+  return promoted > 0;
+end;
 $$;

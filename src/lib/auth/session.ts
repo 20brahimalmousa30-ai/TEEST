@@ -1,62 +1,47 @@
 "use client";
 import { useEffect, useState } from "react";
-import type { Session, DemoAccount } from "./accounts";
+import type { DbSession } from "@/lib/db/types";
+import { getSession, logout } from "./session-actions";
 
-const KEY = "maali.session.v1";
+/** شكل الجلسة كما تُقرأ في المتصفّح (مطابق لِما يُوقّع في الكوكي). */
+export type Session = DbSession;
 
-export function saveSession(account: DemoAccount): Session {
-  const session: Session = {
-    phone: account.phone,
-    name: account.name,
-    role: account.role,
-    isOwner: account.isOwner,
-    supervisorId: account.supervisorId,
-    studentId: account.studentId,
-  };
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(KEY, JSON.stringify(session));
-  }
-  return session;
-}
-
-export function readSession(): Session | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as Session;
-  } catch {
-    return null;
-  }
-}
-
-export function clearSession() {
-  if (typeof window !== "undefined") window.localStorage.removeItem(KEY);
-}
-
-/** Client hook — returns null while hydrating */
+/**
+ * هوك العميل — يقرأ الجلسة من الكوكي الموقّع عبر Server Action.
+ * يُعيد { session, ready }؛ session تبقى null أثناء التحميل.
+ */
 export function useSession() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [ready, setReady]     = useState(false);
+  const [session, setSession] = useState<DbSession | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setSession(readSession());
-    setReady(true);
-    const onStorage = () => setSession(readSession());
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("maali.session.changed", onStorage as EventListener);
+    let alive = true;
+    const refresh = () =>
+      getSession().then(s => {
+        if (!alive) return;
+        setSession(s);
+        setReady(true);
+      });
+    refresh();
+    const onChange = () => refresh();
+    window.addEventListener("maali.session.changed", onChange as EventListener);
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("maali.session.changed", onStorage as EventListener);
+      alive = false;
+      window.removeEventListener("maali.session.changed", onChange as EventListener);
     };
   }, []);
 
   return { session, ready };
 }
 
-/** Emit change so useSession hooks in the same tab react */
+/** يُخطر هوكات useSession في نفس التبويب بأن الجلسة تغيّرت. */
 export function announceSessionChange() {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event("maali.session.changed"));
   }
+}
+
+/** يسجّل الخروج بمحو كوكي الجلسة من الخادم. */
+export async function clearSession() {
+  await logout();
 }

@@ -23,7 +23,7 @@ const maskNid = () => "••••••" + Math.floor(1000 + Math.random() * 8
 export async function loadAllData(): Promise<State> {
   const db = getSupabase();
 
-  const [teams, students, supervisors, committees, invoices, regRows, attRows, settings] =
+  const [teams, students, supervisors, committees, invoices, regRows, attRows, asgRows, settings] =
     await Promise.all([
       db.from("teams").select("*").order("points", { ascending: false }),
       db.from("students").select("*").order("points", { ascending: false }),
@@ -32,6 +32,7 @@ export async function loadAllData(): Promise<State> {
       db.from("invoices").select("*").order("created_at", { ascending: false }),
       db.from("reg_fields").select("*").order("sort", { ascending: true }),
       db.from("attendance").select("*"),
+      db.from("supervisor_assignments").select("*"),
       db.from("app_settings").select("*").eq("id", 1).single(),
     ]);
 
@@ -42,14 +43,34 @@ export async function loadAllData(): Promise<State> {
     attendance[a.student_id] = arr;
   }
 
+  // اشتقاق علاقات المشرفين من جدول الربط (المصدر الوحيد للحقيقة).
+  const supTeams: Record<string, string[]> = {};
+  const supComms: Record<string, string[]> = {};
+  const commSups: Record<string, string[]> = {};
+  for (const a of asgRows.data ?? []) {
+    if (a.target_kind === "team") {
+      (supTeams[a.supervisor_id] ??= []).push(a.target_id);
+    } else if (a.target_kind === "committee") {
+      (supComms[a.supervisor_id] ??= []).push(a.target_id);
+      (commSups[a.target_id] ??= []).push(a.supervisor_id);
+    }
+  }
+
   const allInvoices = (invoices.data ?? []).map(rowToInvoice);
   const trashIds = new Set((invoices.data ?? []).filter(r => r.in_trash).map(r => r.id));
 
   return {
     teams:          (teams.data ?? []).map(rowToTeam),
     students:       (students.data ?? []).map(rowToStudent),
-    supervisors:    (supervisors.data ?? []).map(rowToSupervisor),
-    committees:     (committees.data ?? []).map(rowToCommittee),
+    supervisors:    (supervisors.data ?? []).map(r => ({
+      ...rowToSupervisor(r),
+      teamIds: supTeams[r.id] ?? [],
+      committeeIds: supComms[r.id] ?? [],
+    })),
+    committees:     (committees.data ?? []).map(r => ({
+      ...rowToCommittee(r),
+      supervisorIds: commSups[r.id] ?? [],
+    })),
     invoices:       allInvoices.filter(i => !trashIds.has(i.id)),
     trashInvoices:  allInvoices.filter(i => trashIds.has(i.id)),
     regFields:      (regRows.data ?? []).map(rowToRegField),
@@ -59,19 +80,49 @@ export async function loadAllData(): Promise<State> {
   };
 }
 
+/* ─────────── جدول الربط: مُساعِدات المشرفين↔الفرق/اللجان ─────────── */
+
+/** يستبدل كامل تعيينات مشرفٍ من نوعٍ معيّن (team أو committee). */
+async function setSupervisorTargets(supervisorId: string, kind: "team" | "committee", targetIds: string[]) {
+  const db = getSupabase();
+  await db.from("supervisor_assignments").delete().eq("supervisor_id", supervisorId).eq("target_kind", kind);
+  const rows = targetIds.filter(Boolean).map(t => ({ supervisor_id: supervisorId, target_kind: kind, target_id: t }));
+  if (rows.length) await db.from("supervisor_assignments").insert(rows);
+}
+
+/** يستبدل كامل مشرفي لجنةٍ معيّنة. */
+async function setCommitteeSupervisors(committeeId: string, supervisorIds: string[]) {
+  const db = getSupabase();
+  await db.from("supervisor_assignments").delete().eq("target_kind", "committee").eq("target_id", committeeId);
+  const rows = supervisorIds.filter(Boolean).map(s => ({ supervisor_id: s, target_kind: "committee", target_id: committeeId }));
+  if (rows.length) await db.from("supervisor_assignments").insert(rows);
+}
+
 /* ─────────────────────────── الفرق ─────────────────────────── */
 
 export async function dbAddTeam(name: string, color: string, badge: string, supervisorId: string, tagline: string) {
+  const id = uid("t");
   await getSupabase().from("teams").insert(
-    teamToRow({ id: uid("t"), name, color, badge, supervisorId, tagline, studentCount: 0, points: 0 }),
+    teamToRow({ id, name, color, badge, supervisorId, tagline, studentCount: 0, points: 0 }),
   );
+  // قائد الفريق يُصبح مُشرفاً عليه في جدول الربط.
+  if (supervisorId) {
+    await getSupabase().from("supervisor_assignments")
+      .upsert({ supervisor_id: supervisorId, target_kind: "team", target_id: id }, { ignoreDuplicates: true });
+  }
 }
 export async function dbUpdateTeam(id: string, patch: Partial<Team>) {
   await getSupabase().from("teams").update(teamToRow(patch)).eq("id", id);
+  // عند تغيير القائد: يُضاف كمُشرفٍ على الفريق (دون إزالة مشرفين آخرين).
+  if (patch.supervisorId) {
+    await getSupabase().from("supervisor_assignments")
+      .upsert({ supervisor_id: patch.supervisorId, target_kind: "team", target_id: id }, { ignoreDuplicates: true });
+  }
 }
 export async function dbDeleteTeam(id: string) {
   const db = getSupabase();
   await db.from("students").delete().eq("team_id", id);
+  await db.from("supervisor_assignments").delete().eq("target_kind", "team").eq("target_id", id);
   await db.from("teams").delete().eq("id", id);
 }
 
@@ -163,29 +214,42 @@ async function bumpTeamCount(teamId: string, delta: number) {
 /* ─────────────────────────── المشرفون ─────────────────────────── */
 
 export async function dbAddSupervisor(name: string, phone: string, email: string, teamIds: string[], committeeIds: string[]) {
+  const id = uid("s");
   await getSupabase().from("supervisors").insert(
-    supervisorToRow({ id: uid("s"), name, phone, email, teamIds, committeeIds, nationalIdMasked: maskNid() }),
+    supervisorToRow({ id, name, phone, email, nationalIdMasked: maskNid() }),
   );
+  await setSupervisorTargets(id, "team", teamIds);
+  await setSupervisorTargets(id, "committee", committeeIds);
 }
 export async function dbUpdateSupervisor(id: string, patch: Partial<Supervisor>) {
-  await getSupabase().from("supervisors").update(supervisorToRow(patch)).eq("id", id);
+  const row = supervisorToRow(patch);
+  if (Object.keys(row).length) await getSupabase().from("supervisors").update(row).eq("id", id);
+  if (patch.teamIds !== undefined) await setSupervisorTargets(id, "team", patch.teamIds);
+  if (patch.committeeIds !== undefined) await setSupervisorTargets(id, "committee", patch.committeeIds);
 }
 export async function dbDeleteSupervisor(id: string) {
+  // تعيينات المشرف تُحذف تلقائياً (on delete cascade).
   await getSupabase().from("supervisors").delete().eq("id", id);
 }
 
 /* ─────────────────────────── اللجان ─────────────────────────── */
 
 export async function dbAddCommittee(name: string, description: string, supervisorIds: string[], color: string) {
+  const id = uid("c");
   await getSupabase().from("committees").insert(
-    committeeToRow({ id: uid("c"), name, description, supervisorIds, color }),
+    committeeToRow({ id, name, description, color }),
   );
+  await setCommitteeSupervisors(id, supervisorIds);
 }
 export async function dbUpdateCommittee(id: string, patch: Partial<Committee>) {
-  await getSupabase().from("committees").update(committeeToRow(patch)).eq("id", id);
+  const row = committeeToRow(patch);
+  if (Object.keys(row).length) await getSupabase().from("committees").update(row).eq("id", id);
+  if (patch.supervisorIds !== undefined) await setCommitteeSupervisors(id, patch.supervisorIds);
 }
 export async function dbDeleteCommittee(id: string) {
-  await getSupabase().from("committees").delete().eq("id", id);
+  const db = getSupabase();
+  await db.from("supervisor_assignments").delete().eq("target_kind", "committee").eq("target_id", id);
+  await db.from("committees").delete().eq("id", id);
 }
 
 /* ─────────────────────────── الفواتير ─────────────────────────── */
@@ -251,7 +315,70 @@ export async function dbSetLogoDisplayMode(mode: LogoDisplayMode) {
   await getSupabase().from("app_settings").update({ logo_display_mode: mode }).eq("id", 1);
 }
 
+/* ─────────────────────────── التصفير ─────────────────────────── */
+
+/** يمحو كلّ بيانات الفعاليّة (الفرق/الطلاب/المشرفين/اللجان/الفواتير/الحضور)
+ *  دون المساس بالحسابات (profiles) ولا الإعدادات ولا حقول التسجيل. */
+export async function dbResetAll() {
+  const db = getSupabase();
+  await Promise.all([
+    db.from("attendance").delete().neq("student_id", ""),
+    db.from("supervisor_assignments").delete().neq("supervisor_id", ""),
+    db.from("students").delete().neq("id", ""),
+    db.from("invoices").delete().neq("id", ""),
+    db.from("teams").delete().neq("id", ""),
+    db.from("committees").delete().neq("id", ""),
+    db.from("supervisors").delete().neq("id", ""),
+  ]);
+}
+
 /* ─────────────────────────── المصادقة ─────────────────────────── */
+
+/** يغيّر رمز الدخول: يتحقّق من الرمز الحالي ثم يُحدّث التشفير (عبر set_login_code).
+ *  يُعيد true عند النجاح، false إن كان الرمز الحالي خاطئاً. */
+export async function dbSetLoginCode(phone: string, current: string, next: string): Promise<boolean> {
+  const { data, error } = await getSupabase().rpc("set_login_code", {
+    p_phone: phone.trim(), p_current: current.trim(), p_new: next.trim(),
+  });
+  if (error) return false;
+  return data === true;
+}
+
+/* ─────────────────────────── الإدارة (الأمراء) ─────────────────────────── */
+
+export type AdminRow = { id: string; phone: string; name: string; role: string; isOwner: boolean };
+
+/** يُعيد كلّ الحسابات الإداريّة (أمير/نائب أمير) — المالكُ أولاً. */
+export async function dbListAdmins(): Promise<AdminRow[]> {
+  const { data } = await getSupabase()
+    .from("profiles").select("id, phone, name, role, is_owner")
+    .in("role", ["PRINCE", "DEPUTY_PRINCE"])
+    .order("is_owner", { ascending: false });
+  return (data ?? []).map(r => ({ id: r.id, phone: r.phone, name: r.name, role: r.role, isOwner: r.is_owner }));
+}
+
+/** يُنشئ حساب نائب أمير برمزٍ مُشفَّر (عبر create_admin). */
+export async function dbCreateAdmin(name: string, phone: string, code: string, role: string): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await getSupabase().rpc("create_admin", {
+    p_id: uid("adm"), p_phone: phone.trim(), p_code: code.trim(), p_name: name.trim(), p_role: role,
+  });
+  if (error) return { ok: false, error: /duplicate|unique/i.test(error.message) ? "الجوّال مُسجَّل مسبقاً." : "تعذّر إنشاء الحساب." };
+  return { ok: true };
+}
+
+/** ينقل الملكيّة ذرّياً من المالك الحاليّ إلى حسابٍ آخر (عبر transfer_ownership). */
+export async function dbTransferOwnership(fromPhone: string, toId: string): Promise<boolean> {
+  const { data, error } = await getSupabase().rpc("transfer_ownership", { p_from_phone: fromPhone, p_to_id: toId });
+  if (error) return false;
+  return data === true;
+}
+
+/** يحذف حساباً إدارياً — لا يُحذف المالك أبداً (شرط is_owner=false). */
+export async function dbDeleteAdmin(id: string): Promise<boolean> {
+  const { error, count } = await getSupabase()
+    .from("profiles").delete({ count: "exact" }).eq("id", id).eq("is_owner", false);
+  return !error && (count ?? 0) > 0;
+}
 
 /** يتحقّق من الجوّال والرمز عبر دالّة verify_login في قاعدة البيانات (تشفير bcrypt). */
 export async function dbVerifyLogin(phone: string, code: string): Promise<LoginResult> {

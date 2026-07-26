@@ -24,16 +24,17 @@ export const teamToRow = (t: Partial<Team>) => ({
   ...(t.name !== undefined && { name: t.name }),
   ...(t.color !== undefined && { color: t.color }),
   ...(t.badge !== undefined && { badge: t.badge }),
-  ...(t.supervisorId !== undefined && { supervisor_id: t.supervisorId }),
+  ...(t.supervisorId !== undefined && { supervisor_id: t.supervisorId || null }),
   ...(t.studentCount !== undefined && { student_count: t.studentCount }),
   ...(t.points !== undefined && { points: t.points }),
   ...(t.tagline !== undefined && { tagline: t.tagline }),
 });
 
+// supervisorIds لم يعد عموداً — يُشتقّ من supervisor_assignments في loadAllData.
 export const rowToCommittee = (r: any): Committee => ({
   id: r.id,
   name: r.name,
-  supervisorIds: r.supervisor_ids ?? [],
+  supervisorIds: [],
   description: r.description ?? "",
   color: r.color,
 });
@@ -41,19 +42,19 @@ export const rowToCommittee = (r: any): Committee => ({
 export const committeeToRow = (c: Partial<Committee>) => ({
   ...(c.id !== undefined && { id: c.id }),
   ...(c.name !== undefined && { name: c.name }),
-  ...(c.supervisorIds !== undefined && { supervisor_ids: c.supervisorIds }),
   ...(c.description !== undefined && { description: c.description }),
   ...(c.color !== undefined && { color: c.color }),
 });
 
+// teamIds/committeeIds لم تعد أعمدة — تُشتقّ من supervisor_assignments في loadAllData.
 export const rowToSupervisor = (r: any): Supervisor => ({
   id: r.id,
   name: r.name,
   nationalIdMasked: r.national_id_masked ?? "",
   phone: r.phone ?? "",
   email: r.email ?? "",
-  teamIds: r.team_ids ?? [],
-  committeeIds: r.committee_ids ?? [],
+  teamIds: [],
+  committeeIds: [],
 });
 
 export const supervisorToRow = (s: Partial<Supervisor>) => ({
@@ -62,8 +63,6 @@ export const supervisorToRow = (s: Partial<Supervisor>) => ({
   ...(s.nationalIdMasked !== undefined && { national_id_masked: s.nationalIdMasked }),
   ...(s.phone !== undefined && { phone: s.phone }),
   ...(s.email !== undefined && { email: s.email }),
-  ...(s.teamIds !== undefined && { team_ids: s.teamIds }),
-  ...(s.committeeIds !== undefined && { committee_ids: s.committeeIds }),
 });
 
 export const rowToStudent = (r: any): Student => ({

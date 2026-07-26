@@ -248,10 +248,12 @@ export default function StudentsPage() {
 
       <Card padded={false}>
         <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-[13.5px]">
+        <table className="w-full min-w-[820px] text-[13.5px]">
           <thead className="text-[11px] tracking-[.14em] text-text-3">
             <tr className="border-b border-line">
               <th className="px-5 py-3 text-start font-normal">الاسم</th>
+              <th className="px-5 py-3 text-start font-normal">الجوّال</th>
+              <th className="px-5 py-3 text-start font-normal">الرمز</th>
               <th className="px-5 py-3 text-start font-normal">الفريق</th>
               <th className="px-5 py-3 text-start font-normal">الصف · القسم</th>
               <th className="px-5 py-3 text-end font-normal">الحضور</th>
@@ -261,7 +263,7 @@ export default function StudentsPage() {
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={6} className="px-5 py-10 text-center text-text-3">لا نتائج مطابقة.</td></tr>
+              <tr><td colSpan={8} className="px-5 py-10 text-center text-text-3">لا نتائج مطابقة.</td></tr>
             )}
             {filtered.slice(0, 100).map(s => {
               const team = teams.find(t => t.id === s.teamId);
@@ -270,6 +272,12 @@ export default function StudentsPage() {
                   <td className="px-5 py-3">
                     <Link href={`/students/${s.id}`} className="text-text hover:text-accent">{s.name}</Link>
                     <span className="num ms-2 text-[11px] text-text-3">{s.nationalIdMasked}</span>
+                  </td>
+                  <td className="num px-5 py-3 text-text-2">{s.phone}</td>
+                  <td className="px-5 py-3">
+                    {s.accessCode
+                      ? <span className="num rounded bg-bg-raised px-2 py-0.5 text-[12px] tracking-wider text-accent">{s.accessCode}</span>
+                      : <span className="text-[11px] text-text-3">—</span>}
                   </td>
                   <td className="px-5 py-3">
                     <Link href={`/teams/${s.teamId}`} className="text-text-2 hover:text-accent">فريق {team?.name ?? "—"}</Link>

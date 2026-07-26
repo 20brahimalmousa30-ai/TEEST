@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Logo } from "@/components/Logo";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
@@ -16,8 +16,22 @@ const sar = (n: number) => new Intl.NumberFormat("ar-SA-u-nu-latn").format(n);
 export default function MePage() {
   const { session, ready } = useSession();
   const router = useRouter();
-  const { students, teams, setPayment } = useStore();
+  const { students, teams, setPayment, setStudentPhoto } = useStore();
   const [payOpen, setPayOpen] = useState(false);
+  const [photoErr, setPhotoErr] = useState("");
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  function onPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setPhotoErr("الملف يجب أن يكون صورة."); return; }
+    if (file.size > 5 * 1024 * 1024) { setPhotoErr("الحدّ الأقصى ٥ ميغابايت."); return; }
+    setPhotoErr("");
+    const reader = new FileReader();
+    reader.onload = () => { if (student) setStudentPhoto(student.id, String(reader.result)); };
+    reader.readAsDataURL(file);
+  }
 
   useEffect(() => {
     if (!ready) return;
@@ -45,7 +59,7 @@ export default function MePage() {
         <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
           <Logo size={72} priority />
           <button
-            onClick={() => { clearSession(); announceSessionChange(); router.push("/login"); }}
+            onClick={async () => { await clearSession(); announceSessionChange(); router.push("/login"); }}
             className="rounded border border-line-strong px-3 py-1.5 text-[12px] text-text-2 hover:border-accent hover:text-text"
           >
             خروج
@@ -75,6 +89,27 @@ export default function MePage() {
         </section>
 
         <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2">
+          <Card title="صورتك الشخصيّة">
+            <div className="flex items-center gap-4">
+              {student.photoDataUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={student.photoDataUrl} alt={student.name} className="h-20 w-20 rounded-full object-cover" />
+              ) : (
+                <div className="grid h-20 w-20 place-items-center rounded-full bg-accent text-[28px] font-semibold" style={{ color: "#F4EEE2" }}>
+                  {student.name.split(" ")[0]?.[0]}
+                </div>
+              )}
+              <div className="flex-1">
+                <input ref={fileRef} type="file" accept="image/*" onChange={onPhoto} className="hidden" />
+                <Button variant="outline" onClick={() => fileRef.current?.click()}>
+                  {student.photoDataUrl ? "تغيير الصورة" : "رفع صورتك"}
+                </Button>
+                <p className="mt-2 text-[12px] text-text-3">صورةٌ واضحة لوجهك — بحدٍّ أقصى ٥ ميغابايت.</p>
+                {photoErr && <p className="mt-1 text-[12px] text-critical">{photoErr}</p>}
+              </div>
+            </div>
+          </Card>
+
           <Card title="بياناتك">
             <dl className="grid gap-3 text-[13.5px]">
               <Row k="الاسم"   v={student.name} />

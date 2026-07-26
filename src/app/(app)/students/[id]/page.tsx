@@ -12,6 +12,8 @@ import { useStore } from "@/lib/store/StoreProvider";
 import { copyText } from "@/lib/download";
 
 const sar = (n: number) => new Intl.NumberFormat("ar-SA-u-nu-latn").format(n);
+const fmtDate = (iso?: string) =>
+  iso ? new Intl.DateTimeFormat("ar-SA-u-nu-latn-ca-gregory", { year: "numeric", month: "long", day: "numeric" }).format(new Date(iso)) : "—";
 const grades = ["الأول ثانوي", "الثاني ثانوي", "الثالث ثانوي"];
 const sections = ["ريادة", "علو", "قيادة"] as const;
 
@@ -93,9 +95,14 @@ export default function StudentDetail() {
         <div className="flex flex-col gap-6">
           <Card padded={false}>
             <div className="flex items-center gap-4 border-b border-line p-6">
-              <div className="grid h-16 w-16 place-items-center rounded-full bg-accent text-[24px] font-semibold" style={{ color: "#F4EEE2" }}>
-                {s.name.split(" ")[0]?.[0]}
-              </div>
+              {s.photoDataUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={s.photoDataUrl} alt={s.name} className="h-16 w-16 rounded-full object-cover" />
+              ) : (
+                <div className="grid h-16 w-16 place-items-center rounded-full bg-accent text-[24px] font-semibold" style={{ color: "#F4EEE2" }}>
+                  {s.name.split(" ")[0]?.[0]}
+                </div>
+              )}
               <div>
                 <div className="text-[18px] font-semibold text-text">{s.name}</div>
                 <div className="mt-1 text-[12.5px] text-text-3">الهويّة: <span className="num text-text-2">{s.nationalIdMasked}</span></div>
@@ -104,11 +111,18 @@ export default function StudentDetail() {
             <dl className="divide-y divide-line">
               {[
                 ["الجوّال", <span key="p" className="num">{s.phone}</span>],
+                ["رمز الدخول", s.accessCode
+                  ? <span key="c" className="num rounded bg-bg-raised px-2 py-0.5 text-accent tracking-wider">{s.accessCode}</span>
+                  : <span key="c" className="text-text-3">—</span>],
                 ["الصف", s.grade],
                 ["القسم", s.section],
                 ["الفريق", <Link key="t" href={`/teams/${s.teamId}`} className="text-accent hover:underline">فريق {team?.name ?? "—"}</Link>],
                 ["نقاطه", <span key="pt" className="num">{s.points}</span>],
                 ["نسبة الحضور", <span key="a" className="num">{s.attendance}%</span>],
+                ["حالة الاعتماد", <Pill key="st" variant={s.approvalStatus === "REJECTED" ? "critical" : s.approvalStatus === "PENDING" ? "warn" : "ok"}>
+                  {s.approvalStatus === "REJECTED" ? "مرفوض" : s.approvalStatus === "PENDING" ? "قيد المراجعة" : "معتمد"}
+                </Pill>],
+                ["تاريخ التسجيل", <span key="rd" className="num">{fmtDate(s.registeredAt)}</span>],
               ].map(([k, v]) => (
                 <div key={k as string} className="grid grid-cols-[110px_1fr] gap-4 px-6 py-3 text-[13.5px]">
                   <dt className="text-text-3">{k}</dt>

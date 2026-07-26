@@ -34,6 +34,7 @@ const fullNav: NavGroup[] = [
     label: "الإعداد",
     items: [
       { href: "/settings/registration", label: "نموذج التسجيل", icon: <IconSettings /> },
+      { href: "/settings/account",      label: "إعدادات الحساب", icon: <IconUser /> },
     ],
   },
 ];
@@ -46,6 +47,12 @@ const supervisorNav: NavGroup[] = [
       { href: "/my-team",    label: "فريقي",           icon: <IconTeams /> },
       { href: "/my-committee", label: "لجنتي",         icon: <IconCommittee /> },
       { href: "/leaderboard", label: "قائمة الصدارة", icon: <IconTrophy /> },
+    ],
+  },
+  {
+    label: "الإعداد",
+    items: [
+      { href: "/settings/account", label: "إعدادات الحساب", icon: <IconUser /> },
     ],
   },
 ];
@@ -69,11 +76,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Close the mobile drawer whenever the route changes
   useEffect(() => { setDrawerOpen(false); }, [pathname]);
 
-  const groups: NavGroup[] =
+  const baseGroups: NavGroup[] =
     session?.role === "SUPERVISOR" ? supervisorNav : fullNav;
 
-  function onLogout() {
-    clearSession();
+  // رابط «إدارة الأمراء» يظهر للمالك الأصل فقط، ضمن مجموعة الإعداد.
+  const groups: NavGroup[] = session?.isOwner
+    ? baseGroups.map(g => g.label === "الإعداد"
+        ? { ...g, items: [...g.items, { href: "/settings/admins", label: "إدارة الأمراء", icon: <IconCrown /> }] }
+        : g)
+    : baseGroups;
+
+  async function onLogout() {
+    await clearSession();
     announceSessionChange();
     router.push("/login");
   }
@@ -134,7 +148,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {session ? session.name.split("—").pop()?.trim() ?? session.name : "زائر"}
             </span>
             <span className="text-[11px] text-text-3">
-              {session ? `${roleLabel[session.role]}${session.isOwner ? " · Owner" : ""}` : "غير مسجّل"}
+              {session ? `${roleLabel[session.role as keyof typeof roleLabel] ?? session.role}${session.isOwner ? " · Owner" : ""}` : "غير مسجّل"}
             </span>
           </div>
         </div>
@@ -239,3 +253,5 @@ function IconSupervisor() { return <svg width="18" height="18" viewBox="0 0 24 2
 function IconInvoice()    { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 10h18"/></svg>; }
 function IconTrophy()     { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M8 4h8v5a4 4 0 0 1-8 0V4zM6 6H3v2a3 3 0 0 0 3 3M18 6h3v2a3 3 0 0 1-3 3M10 20h4M12 15v5"/></svg>; }
 function IconSettings()   { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg>; }
+function IconUser()       { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="8" r="3.5"/><path d="M5 21c0-3.9 3.1-7 7-7s7 3.1 7 7"/></svg>; }
+function IconCrown()      { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M3 8l4 4 5-7 5 7 4-4-2 11H5L3 8z"/></svg>; }

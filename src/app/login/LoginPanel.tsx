@@ -3,8 +3,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Field } from "@/components/ui/Field";
-import { findAccountByPhone } from "@/lib/auth/accounts";
-import { saveSession, announceSessionChange } from "@/lib/auth/session";
+import { login } from "@/lib/auth/session-actions";
+import { announceSessionChange } from "@/lib/auth/session";
 
 export function LoginPanel() {
   const router = useRouter();
@@ -13,22 +13,18 @@ export function LoginPanel() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setBusy(true);
-    const account = findAccountByPhone(phone);
-    if (!account) {
-      setError("لا يوجد حسابٌ بهذا الجوّال.");
-      setBusy(false); return;
+    const result = await login(phone, code);
+    if (!result.ok) {
+      setError("رقم الجوّال أو رمز الدخول غير صحيح.");
+      setBusy(false);
+      return;
     }
-    if (account.code !== code.trim()) {
-      setError("رمز الدخول غير صحيح.");
-      setBusy(false); return;
-    }
-    saveSession(account);
     announceSessionChange();
-    router.push(account.landing);
+    router.push(result.session.landing);
   }
 
   return (

@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useState } from "react";
+import QRCode from "qrcode";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
@@ -19,12 +20,29 @@ export default function RegistrationSettingsPage() {
   const canControlLogo = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
   const [addOpen, setAddOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [nf, setNf] = useState({ key: "", label: "", type: "نص", required: false, desc: "" });
 
   const link = typeof window !== "undefined" ? `${window.location.origin}/register/1448` : "maali.abha/register/1448";
+
+  // Generate a real, scannable QR (PNG data URL) whenever the modal opens.
+  useEffect(() => {
+    if (!qrOpen) return;
+    QRCode.toDataURL(link, { width: 512, margin: 2, color: { dark: "#1E4635", light: "#FFFFFF" } })
+      .then(setQrDataUrl)
+      .catch(() => setQrDataUrl(""));
+  }, [qrOpen, link]);
+
+  function downloadQr() {
+    if (!qrDataUrl) return;
+    const a = document.createElement("a");
+    a.href = qrDataUrl;
+    a.download = "maali-register-qr.png";
+    a.click();
+  }
 
   async function onCopy() {
     if (await copyText(link)) { setCopied(true); setTimeout(() => setCopied(false), 2000); }
@@ -202,13 +220,21 @@ export default function RegistrationSettingsPage() {
         </form>
       </Modal>
 
-      {/* QR modal — simple visual QR-like grid based on link hash */}
+      {/* QR modal — real scannable QR, downloadable as PNG */}
       <Modal open={qrOpen} onClose={() => setQrOpen(false)} title="رمز QR للرابط" size="sm"
-        footer={<Button variant="outline" onClick={() => setQrOpen(false)}>إغلاق</Button>}>
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setQrOpen(false)}>إغلاق</Button>
+            <Button onClick={downloadQr} disabled={!qrDataUrl}>⬇ تحميل الصورة</Button>
+          </>
+        }>
         <div className="flex flex-col items-center gap-3">
-          <QRPlaceholder value={link} />
+          {qrDataUrl
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={qrDataUrl} alt="رمز QR لرابط التسجيل" className="h-52 w-52 rounded bg-white p-3" />
+            : <div className="grid h-52 w-52 place-items-center rounded bg-bg-raised text-[12px] text-text-3">جارٍ التوليد…</div>}
           <p className="lat text-[11px] text-text-3 break-all text-center">{link}</p>
-          <p className="text-[11.5px] text-text-3 text-center">في النسخة الفعليّة سيولَّد QR حقيقي قابل للمسح.</p>
+          <p className="text-[11.5px] text-text-3 text-center">امسح الرمز بالكاميرا للوصول لصفحة التسجيل مباشرةً.</p>
         </div>
       </Modal>
 
@@ -231,36 +257,5 @@ export default function RegistrationSettingsPage() {
         danger
       />
     </div>
-  );
-}
-
-function QRPlaceholder({ value }: { value: string }) {
-  // Not a real QR — a 21×21 stable pseudo-grid derived from the string.
-  const size = 21;
-  let h = 5381;
-  for (const ch of value) h = (h * 33) ^ ch.charCodeAt(0);
-  const rand = (i: number) => {
-    let x = (h ^ (i * 2654435761)) >>> 0;
-    x = (x ^ (x >>> 16)) * 0x85ebca6b;
-    return ((x >>> 0) % 100) / 100;
-  };
-  const cells: ReactElement[] = [];
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    // finder patterns in 3 corners
-    const inFinder =
-      (x < 7 && y < 7) || (x >= size - 7 && y < 7) || (x < 7 && y >= size - 7);
-    if (inFinder) {
-      const fx = x < 7 ? x : x - (size - 7);
-      const fy = y < 7 ? y : y - (size - 7);
-      const on = (fx === 0 || fx === 6 || fy === 0 || fy === 6) || (fx >= 2 && fx <= 4 && fy >= 2 && fy <= 4);
-      cells.push(<rect key={`${x},${y}`} x={x * 8} y={y * 8} width={8} height={8} fill={on ? "#1E4635" : "transparent"} />);
-      continue;
-    }
-    if (rand(y * size + x) > 0.55) cells.push(<rect key={`${x},${y}`} x={x * 8} y={y * 8} width={8} height={8} fill="#1E4635" />);
-  }
-  return (
-    <svg viewBox={`0 0 ${size * 8} ${size * 8}`} className="h-52 w-52 rounded bg-white p-3">
-      {cells}
-    </svg>
   );
 }
