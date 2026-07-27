@@ -2,6 +2,11 @@
 
 /* ─────────────────── PALETTE (Maali brand) ─────────────────── */
 :root {
+  /* هويّة «معالي» مصمّمة للوضع الفاتح (رمليّ/كريميّ) فقط. نُثبّت مخطّط الألوان
+     على الفاتح كي لا يفرض المتصفّح تنسيقاً داكناً على الحقول والقوائم الأصليّة
+     حين يكون جهاز المستخدم على «الوضع الداكن». */
+  color-scheme: light;
+
   --jabal:    #2C6B79;
   --jabal-2:  #37808F;
   --shams:    #C2A063;
@@ -12,9 +17,6 @@
   --faham:    #1A211D;
   --faham-2:  #4A544E;
   --faham-3:  #7A857F;
-  --layl:     #0F1512;
-  --layl-2:   #1A2320;
-  --layl-3:   #2A342F;
   --fajr:     #B54A2E;
   --waha:     #5F8A5C;
 
@@ -36,25 +38,10 @@
   --ok:            var(--waha);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg:            var(--layl);
-    --bg-raised:     var(--layl-2);
-    --surface:       var(--layl-2);
-    --surface-alt:   var(--layl-3);
-    --text:          #EEE7D5;
-    --text-2:        #C4BDA8;
-    --text-3:        #8A8574;
-    --line:          #2E3833;
-    --line-strong:   #3E4A44;
-    --accent:        #6FB0BE;
-    --accent-hover:  #7FC0CE;
-    --accent-warm:   #D4B47B;
-    --accent-warm-2: #C4A567;
-    --critical:      #D06349;
-    --ok:            #85B37F;
-  }
-}
+/* ملاحظة: أُزيلت كتلة @media (prefers-color-scheme: dark) عمداً. كانت تقلب
+   الخلفية إلى شبه أسود تلقائياً على أجهزة المستخدمين ذات «الوضع الداكن»،
+   فتظهر الصفحة «شاشةً داكنة» غير مقصودة ولم تُراجَع بصرياً مع هوية العلامة.
+   الموقع الآن فاتحٌ ثابتٌ للجميع بصرف النظر عن إعداد الجهاز. */
 
 /* ─────────────────── Tailwind v4 theme mapping ─────────────────── */
 @theme inline {
