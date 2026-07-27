@@ -152,6 +152,17 @@ const StoreContext = createContext<Store | null>(null);
 
 const uid = (prefix: string) => `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
+/** رمزُ دخولٍ عشوائيٌّ آمنٌ تشفيرياً (٨ خانات، أبجديّةٌ خاليةٌ من الأحرف المُلتبِسة).
+ *  يستخدم مولّدَ الأرقام العشوائيّة الآمن في المتصفّح بدلاً من Math.random. */
+function secureCode(len = 8): string {
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // بلا 0/O/1/I/L
+  const buf = new Uint32Array(len);
+  (globalThis.crypto ?? window.crypto).getRandomValues(buf);
+  let out = "";
+  for (let i = 0; i < len; i++) out += alphabet[buf[i] % alphabet.length];
+  return out;
+}
+
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<State>(initialState);
   const [hydrated, setHydrated] = useState(false);
@@ -229,7 +240,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         teamId: "",                       // unassigned until approval
         paymentStatus: "PENDING",
         paidAmount: 0,
-        totalAmount: 2500,
+        totalAmount: 500,
         emergencyContact: input.emergencyContact,
         emergencyPhone: input.emergencyPhone,
         nationalIdMasked: "••••••" + Math.floor(1000 + Math.random() * 8999),
@@ -244,7 +255,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return record;
     },
     approveStudent(id, teamId) {
-      const code = Math.random().toString(36).slice(2, 8).toUpperCase();
+      const code = secureCode();
       update(s => {
         const st = s.students.find(x => x.id === id);
         if (!st) return {};
@@ -314,7 +325,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     },
 
     addSupervisor(name, phone, email, teamIds, committeeIds, permissions) {
-      const code = Math.random().toString(36).slice(2, 8).toUpperCase();
+      const code = secureCode();
       update(s => ({
         supervisors: [...s.supervisors, {
           id: uid("s"), name, phone, email, teamIds, committeeIds, permissions, accessCode: code,

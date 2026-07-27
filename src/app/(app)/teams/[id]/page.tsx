@@ -63,7 +63,7 @@ export default function TeamDetail() {
       teamId: team!.id,
       paymentStatus: "PENDING",
       paidAmount: 0,
-      totalAmount: 2500,
+      totalAmount: 500,
       emergencyContact: "—",
       emergencyPhone: "—",
     };

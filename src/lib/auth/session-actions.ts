@@ -1,60 +1,29 @@
 "use server";
 import { cookies } from "next/headers";
-import crypto from "node:crypto";
 import {
   dbVerifyLogin, dbSetLoginCode,
   dbListAdmins, dbCreateAdmin, dbTransferOwnership, dbDeleteAdmin,
   type AdminRow,
 } from "@/lib/db/data";
-import type { DbSession, LoginResult } from "@/lib/db/types";
+import type { LoginResult } from "@/lib/db/types";
+import {
+  COOKIE, MAX_AGE, seal, getSession,
+  loginBlocked, recordFailedLogin, clearLoginAttempts,
+} from "./session-core";
 
-const COOKIE = "maali_session";
-const MAX_AGE = 60 * 60 * 24 * 30; // 30 يوماً
+export { getSession };
 
-function secret(): string {
-  const s = process.env.SESSION_SECRET;
-  if (!s) throw new Error("SESSION_SECRET غير مُهيّأ في .env.local");
-  return s;
-}
-
-const b64url = (buf: Buffer | string) =>
-  Buffer.from(buf).toString("base64url");
-
-function sign(payload: string): string {
-  return crypto.createHmac("sha256", secret()).update(payload).digest("base64url");
-}
-
-/** يُنتج رمزاً موقّعاً: base64url(json).توقيع */
-function seal(session: DbSession): string {
-  const body = b64url(JSON.stringify(session));
-  return `${body}.${sign(body)}`;
-}
-
-/** يفكّ الرمز ويتحقّق من التوقيع؛ يُعيد الجلسة أو null. */
-function unseal(token: string): DbSession | null {
-  const dot = token.lastIndexOf(".");
-  if (dot < 0) return null;
-  const body = token.slice(0, dot);
-  const sig = token.slice(dot + 1);
-  const expected = sign(body);
-  // مقارنة ثابتة الزمن
-  if (
-    sig.length !== expected.length ||
-    !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))
-  ) {
-    return null;
-  }
-  try {
-    return JSON.parse(Buffer.from(body, "base64url").toString()) as DbSession;
-  } catch {
-    return null;
-  }
-}
-
-/** تسجيل الدخول: يتحقّق من الجوّال والرمز ثم يزرع كوكي جلسةٍ موقّعاً. */
+/** تسجيل الدخول: يتحقّق من الجوّال والرمز (مع حدٍّ للمحاولات) ثم يزرع كوكي جلسةٍ موقّعاً. */
 export async function login(phone: string, code: string): Promise<LoginResult> {
+  // حدُّ المحاولات: يمنع التخمين العنيف على رمز الدخول.
+  const gate = loginBlocked(phone);
+  if (gate.blocked) return { ok: false };
   const result = await dbVerifyLogin(phone, code);
-  if (!result.ok) return result;
+  if (!result.ok) {
+    recordFailedLogin(phone);
+    return result;
+  }
+  clearLoginAttempts(phone);
   const jar = await cookies();
   jar.set(COOKIE, seal(result.session), {
     httpOnly: true,
@@ -79,14 +48,6 @@ export async function changeCode(current: string, next: string): Promise<{ ok: b
   if (next.trim().length < 4) return { ok: false, error: "الرمز الجديد يجب أن يكون ٤ خانات فأكثر." };
   const ok = await dbSetLoginCode(session.phone, current, next);
   return ok ? { ok: true } : { ok: false, error: "الرمز الحالي غير صحيح." };
-}
-
-/** يقرأ الجلسة الحاليّة من الكوكي الموقّع (أو null). */
-export async function getSession(): Promise<DbSession | null> {
-  const jar = await cookies();
-  const token = jar.get(COOKIE)?.value;
-  if (!token) return null;
-  return unseal(token);
 }
 
 /* ─────────────────────────── إدارة الأمراء (المالك فقط) ─────────────────────────── */

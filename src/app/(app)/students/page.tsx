@@ -11,6 +11,7 @@ import { Field } from "@/components/ui/Field";
 import { useSession } from "@/lib/auth/session";
 import { useStore } from "@/lib/store/StoreProvider";
 import { downloadCSV } from "@/lib/download";
+import { exportStudentsPdf } from "@/lib/pdf/studentsReport";
 import type { PaymentStatus, Student } from "@/lib/mock/types";
 import { sar } from "@/lib/format";
 
@@ -23,10 +24,11 @@ const isWaiting  = (s: Student) => s.approvalStatus === "PENDING";
 export default function StudentsPage() {
   useEffect(() => { document.title = "الشباب — معالي محافظة بلّسمر"; }, []);
   const { session } = useSession();
-  const { students, teams, addStudent, approveStudent, rejectStudent, reviewReceipt } = useStore();
+  const { students, teams, supervisors, addStudent, approveStudent, rejectStudent, reviewReceipt } = useStore();
 
-  // Only PRINCE / DEPUTY_PRINCE can approve/reject
+  // Only PRINCE / DEPUTY_PRINCE can approve/reject — and export the PDF report
   const canApprove = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   const [q, setQ] = useState("");
   const [teamFilter, setTeamFilter] = useState<"ALL" | string>("ALL");
@@ -89,7 +91,7 @@ export default function StudentsPage() {
       teamId: form.teamId,
       paymentStatus: "PENDING",
       paidAmount: 0,
-      totalAmount: 2500,
+      totalAmount: 500,
       emergencyContact: form.emergencyContact.trim() || "—",
       emergencyPhone: form.emergencyPhone.trim() || "—",
     };
@@ -109,6 +111,19 @@ export default function StudentsPage() {
       }),
     ];
     downloadCSV(`الشباب_${filtered.length}`, rows);
+  }
+
+  async function exportPdf() {
+    if (pdfBusy) return;
+    setPdfBusy(true);
+    try {
+      await exportStudentsPdf({ students: filtered, teams, supervisors });
+    } catch (err) {
+      console.error("PDF export failed:", err);
+      alert("تعذّر توليد ملفّ PDF. حاول مرّة أخرى.");
+    } finally {
+      setPdfBusy(false);
+    }
   }
 
   function openApproveDialog(st: Student) {
@@ -300,6 +315,11 @@ export default function StudentsPage() {
           <option value="PENDING">معلّق</option>
         </select>
         <Button variant="outline" onClick={exportFiltered}>⬇ تصدير CSV</Button>
+        {canApprove && (
+          <Button variant="primary" onClick={exportPdf} disabled={pdfBusy}>
+            {pdfBusy ? "…جارٍ التوليد" : "⬇ تصدير PDF"}
+          </Button>
+        )}
       </div>
 
       <Card padded={false}>

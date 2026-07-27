@@ -100,7 +100,7 @@ export default function MePage() {
           أهلاً بك يا <span className="text-accent">{student.name.split(" ")[0]}</span>
         </h1>
         <p className="mt-2 max-w-[54ch] text-[15px] text-text-2">
-          هذه صفحتُك الشخصيّة في رحلة معالي ١٤٤٨هـ — بياناتُك، فريقُك، وحالة سدادك. ما لا يخصّك لن تراه.
+          هذه صفحتُك الشخصيّة في رحلة معالي ١٤٤٨هـ — بياناتُك، فريقُك، وحالة سدادك.
         </p>
 
         <section className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -178,16 +178,6 @@ export default function MePage() {
               <Row k="الرقم"       v={<span className="num">{student.emergencyPhone}</span>} />
             </dl>
             <p className="mt-4 text-[12px] text-text-3">إن تغيّرت بيانات الطوارئ، أخبر مشرف فريقك.</p>
-          </Card>
-
-          <Card title="ما تراه فقط">
-            <ul className="grid gap-2.5 text-[13.5px] text-text-2">
-              <li className="flex items-start gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-ok" /> بياناتك الشخصيّة وسدادك</li>
-              <li className="flex items-start gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-ok" /> اسم فريقك ونقاطه</li>
-              <li className="flex items-start gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-critical" /> <span className="text-text-3">قائمة بقيّة الشباب — لا</span></li>
-              <li className="flex items-start gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-critical" /> <span className="text-text-3">الفواتير المالية — لا</span></li>
-              <li className="flex items-start gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-critical" /> <span className="text-text-3">لوحة الإدارة — لا</span></li>
-            </ul>
           </Card>
         </div>
 
