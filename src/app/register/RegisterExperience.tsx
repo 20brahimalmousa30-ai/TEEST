@@ -65,6 +65,7 @@ export function RegisterExperience() {
       section: (get("section") || sections[0]) as (typeof sections)[number],
       emergencyContact: get("emergN") || "—",
       emergencyPhone: get("emergP") || "—",
+      photoDataUrl: get("photo") || undefined,
     });
     setSubmittedName(name);
     setSubmitted(true);
@@ -216,11 +217,7 @@ function DynamicField({ field, value, onChange }: { field: RegField; value: stri
     return <TextArea label={label} value={value} onChange={e => onChange(e.target.value)} />;
   }
   if (type === "ملف") {
-    return (
-      <div className="rounded border border-dashed border-line-strong bg-bg-raised px-4 py-3 text-[12.5px] text-text-3">
-        {label}: تُرفع صورتُك من صفحتك الشخصيّة بعد قبول طلبك.
-      </div>
-    );
+    return <PhotoField label={label} required={required} value={value} onChange={onChange} />;
   }
   const inputType = type === "تاريخ" ? "date" : type === "هاتف" ? "tel" : type === "رقم" ? "text" : "text";
   const placeholder = type === "هاتف" ? "0555 000 000" : undefined;
@@ -251,5 +248,48 @@ function SelectField({ label, required, value, onChange, options }: {
         {options.map(o => <option key={o}>{o}</option>)}
       </select>
     </label>
+  );
+}
+
+/** Image picker used for `ملف` fields (e.g. the personal photo). Validates that
+ *  the file is an image ≤5MB, then stores it as a base64 data URL in form state
+ *  so it's submitted together with the registration. */
+function PhotoField({ label, required, value, onChange }: {
+  label: string; required: boolean; value: string; onChange: (v: string) => void;
+}) {
+  const ref = useRef<HTMLInputElement | null>(null);
+  const [err, setErr] = useState("");
+  function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setErr("الملف يجب أن يكون صورة."); return; }
+    if (file.size > 5 * 1024 * 1024) { setErr("الحدّ الأقصى ٥ ميغابايت."); return; }
+    setErr("");
+    const reader = new FileReader();
+    reader.onload = () => onChange(String(reader.result));
+    reader.readAsDataURL(file);
+  }
+  return (
+    <div>
+      <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">{label}{required && <span className="ms-1 text-critical">*</span>}</span>
+      <div className="flex items-center gap-3 rounded border border-dashed border-line-strong bg-bg-raised px-4 py-3">
+        {value
+          ? <img src={value} alt={label} className="h-16 w-16 rounded-full object-cover" />
+          : <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface text-[11px] text-text-3">لا صورة</div>}
+        <div className="flex flex-col gap-1">
+          <button
+            type="button"
+            onClick={() => ref.current?.click()}
+            className="rounded border border-line-strong px-4 py-2 text-[13px] text-text-2 hover:border-accent hover:text-text"
+          >
+            {value ? "تغيير الصورة" : "اختيار صورة"}
+          </button>
+          <span className="text-[11.5px] text-text-3">صورة واضحة للوجه · حتى ٥ ميغا</span>
+        </div>
+        <input ref={ref} type="file" accept="image/*" onChange={pick} hidden />
+      </div>
+      {err && <p className="mt-1 text-[12px] text-critical">{err}</p>}
+    </div>
   );
 }

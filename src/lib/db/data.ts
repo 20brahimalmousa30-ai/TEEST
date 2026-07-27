@@ -161,7 +161,7 @@ export async function dbAddStudent(input: Omit<Student, "id" | "nationalIdMasked
 
 export async function dbRegisterStudent(input: {
   name: string; phone: string; grade: string; section: Student["section"];
-  emergencyContact: string; emergencyPhone: string;
+  emergencyContact: string; emergencyPhone: string; photoDataUrl?: string;
 }): Promise<Student> {
   const row = studentToRow({
     id: uid("st"),
@@ -180,6 +180,7 @@ export async function dbRegisterStudent(input: {
     attendance: 100,
     approvalStatus: "PENDING",
     registeredAt: new Date().toISOString(),
+    photoDataUrl: input.photoDataUrl,
   });
   const { data } = await getSupabase().from("students").insert(row).select("*").single();
   return rowToStudent(data);
