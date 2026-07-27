@@ -104,7 +104,7 @@ export default function LandingPage() {
             className="inline-flex items-center gap-2 rounded bg-accent px-6 py-3 text-[15px] font-semibold hover:bg-accent-hover transition-colors"
             style={{ color: "#F4EEE2" }}
           >
-            اختر دورك وابدأ التجربة
+            تسجيل الدخول
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M19 12H5M12 5l-7 7 7 7" />
             </svg>

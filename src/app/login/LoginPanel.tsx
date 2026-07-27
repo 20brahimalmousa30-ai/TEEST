@@ -17,14 +17,19 @@ export function LoginPanel() {
     e.preventDefault();
     setError(null);
     setBusy(true);
-    const result = await login(phone, code);
-    if (!result.ok) {
-      setError("رقم الجوّال أو رمز الدخول غير صحيح.");
+    try {
+      const result = await login(phone, code);
+      if (!result.ok) {
+        setError("رقم الجوّال أو رمز الدخول غير صحيح.");
+        setBusy(false);
+        return;
+      }
+      announceSessionChange();
+      router.push(result.session.landing);
+    } catch {
+      setError("تعذّر الاتصال بالخادم. تحقّق من الإعدادات وحاول مرّة أخرى.");
       setBusy(false);
-      return;
     }
-    announceSessionChange();
-    router.push(result.session.landing);
   }
 
   return (
