@@ -9,7 +9,7 @@ import { TeamBadge } from "@/components/ui/TeamBadge";
 import { useStore } from "@/lib/store/StoreProvider";
 
 export default function LeaderboardPage() {
-  useEffect(() => { document.title = "قائمة الصدارة — معالي أبها"; }, []);
+  useEffect(() => { document.title = "قائمة الصدارة — معالي محافظة بلّسمر"; }, []);
   const { teams, students } = useStore();
   const [bigView, setBigView] = useState(false);
 
@@ -18,7 +18,7 @@ export default function LeaderboardPage() {
   const maxPts = rankedTeams[0]?.points ?? 1;
 
   return (
-    <div className="mx-auto max-w-[1180px] px-6 py-8">
+    <div className="page-shell">
       <PageHeader
         eyebrow="قائمة الصدارة · لحظيّة"
         title="قائمة الصدارة"

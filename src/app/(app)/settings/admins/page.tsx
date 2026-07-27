@@ -13,7 +13,7 @@ import { listAdmins, addAdmin, transferOwnership, deleteAdmin } from "@/lib/auth
 import type { AdminRow } from "@/lib/db/data";
 
 export default function AdminsPage() {
-  useEffect(() => { document.title = "إدارة الأمراء — معالي أبها"; }, []);
+  useEffect(() => { document.title = "إدارة الأمراء — معالي محافظة بلّسمر"; }, []);
   const router = useRouter();
   const { session, ready } = useSession();
   const isOwner = !!session?.isOwner;

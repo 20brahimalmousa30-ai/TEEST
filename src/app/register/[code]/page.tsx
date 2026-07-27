@@ -6,6 +6,6 @@ import { RegisterExperience } from "../RegisterExperience";
  *  edition label; the form itself is shared with /register and reflects the
  *  Prince-controlled active fields. */
 export default function RegisterCodePage() {
-  useEffect(() => { document.title = "التسجيل — معالي أبها"; }, []);
+  useEffect(() => { document.title = "التسجيل — معالي محافظة بلّسمر"; }, []);
   return <RegisterExperience />;
 }

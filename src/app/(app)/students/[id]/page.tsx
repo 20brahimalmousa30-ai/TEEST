@@ -10,10 +10,8 @@ import { Modal, Confirm } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Field";
 import { useStore } from "@/lib/store/StoreProvider";
 import { copyText } from "@/lib/download";
+import { sar, arDate as fmtDate } from "@/lib/format";
 
-const sar = (n: number) => new Intl.NumberFormat("ar-SA-u-nu-latn").format(n);
-const fmtDate = (iso?: string) =>
-  iso ? new Intl.DateTimeFormat("ar-SA-u-nu-latn-ca-gregory", { year: "numeric", month: "long", day: "numeric" }).format(new Date(iso)) : "—";
 const grades = ["الأول ثانوي", "الثاني ثانوي", "الثالث ثانوي"];
 const sections = ["ريادة", "علو", "قيادة"] as const;
 
@@ -39,7 +37,7 @@ export default function StudentDetail() {
 
   useEffect(() => {
     if (s) {
-      document.title = `${s.name} — معالي أبها`;
+      document.title = `${s.name} — معالي محافظة بلّسمر`;
       setForm({
         name: s.name, phone: s.phone, grade: s.grade, section: s.section,
         emergencyContact: s.emergencyContact, emergencyPhone: s.emergencyPhone,
@@ -83,7 +81,7 @@ export default function StudentDetail() {
   }
 
   return (
-    <div className="mx-auto max-w-[1180px] px-6 py-8">
+    <div className="page-shell">
       <PageHeader
         eyebrow="الشاب · بطاقةٌ شخصيّة"
         crumbs={[{ href: "/students", label: "الشباب" }, { label: s.name }]}

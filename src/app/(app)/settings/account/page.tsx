@@ -9,7 +9,7 @@ import { changeCode } from "@/lib/auth/session-actions";
 import { roleLabel } from "@/lib/auth/accounts";
 
 export default function AccountSettingsPage() {
-  useEffect(() => { document.title = "إعدادات الحساب — معالي أبها"; }, []);
+  useEffect(() => { document.title = "إعدادات الحساب — معالي محافظة بلّسمر"; }, []);
   const { session } = useSession();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");

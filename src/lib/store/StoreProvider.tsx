@@ -6,12 +6,17 @@ import {
   dbAddTeam, dbUpdateTeam, dbDeleteTeam,
   dbAddStudent, dbRegisterStudent, dbApproveStudent, dbRejectStudent,
   dbUpdateStudent, dbDeleteStudent, dbMoveStudent, dbSetPayment, dbSetStudentPhoto,
-  dbAddSupervisor, dbUpdateSupervisor, dbDeleteSupervisor,
+  dbSubmitReceipt, dbReviewReceipt,
+  dbAddSupervisor, dbUpdateSupervisor, dbDeleteSupervisor, dbImportSupervisors,
   dbAddCommittee, dbUpdateCommittee, dbDeleteCommittee,
   dbAddInvoice, dbApproveInvoice, dbDeleteInvoice, dbRestoreInvoice,
-  dbToggleRegField, dbReorderRegField, dbAddRegField, dbRemoveRegField, dbSetRegOpen,
+  dbToggleRegField, dbReorderRegField, dbAddRegField, dbUpdateRegField, dbRemoveRegField, dbSetRegOpen,
   dbToggleAttendance, dbSetLogoDisplayMode, dbResetAll,
+  dbSetMotivations, dbSetTickerPhrases, dbSetTripMessage,
+  dbSetLogoUrl, dbSetBrandColors, dbSetPageMarquees,
 } from "@/lib/db/data";
+import { motivations as DEFAULT_MOTIVATIONS, tickerPhrases as DEFAULT_TICKER } from "@/lib/motivations";
+import type { PageMarquee, PageMarqueeMap } from "@/lib/pageMarquees";
 
 export type RegField = {
   key: string; label: string; type: string; required: boolean; active: boolean; desc: string;
@@ -22,15 +27,17 @@ const initialFields: RegField[] = [
   { key: "nid",     label: "رقم الهويّة",       type: "رقم",     required: true,  active: true,  desc: "يُخزَّن مشفَّراً — لا يظهر كاملاً إلاّ للأمير الأصل." },
   { key: "phone",   label: "الجوّال",          type: "هاتف",    required: true,  active: true,  desc: "رقم واتساب مُفضَّل، للتواصل مع الطالب مباشرة." },
   { key: "grade",   label: "الصف الدراسي",     type: "قائمة",   required: true,  active: true,  desc: "من قائمة: أوّل/ثاني/ثالث ثانوي." },
-  { key: "section", label: "القسم المفضَّل",   type: "قائمة",   required: false, active: true,  desc: "ريادة/علو/قيادة — لتوزيعٍ مبدئي." },
+  { key: "section", label: "الفريق",          type: "قائمة",   required: false, active: true,  desc: "الريادة/القيادة/العلو — لتوزيعٍ مبدئي." },
   { key: "photo",   label: "الصورة الشخصيّة", type: "ملف",      required: false, active: true,  desc: "بحدٍّ أقصى ٥ ميغا." },
-  { key: "emergN",  label: "اسم جهة الطوارئ", type: "نص",      required: true,  active: true,  desc: "الأب/الأم/الوليّ." },
-  { key: "emergP",  label: "رقم الطوارئ",     type: "هاتف",    required: true,  active: true,  desc: "متاح ٢٤ ساعة أثناء الرحلة." },
-  { key: "health",  label: "الحالة الصحيّة",  type: "نص طويل", required: false, active: true,  desc: "أمراض مزمنة، حساسيّة دواء، غذاء خاص." },
+  { key: "emergP",  label: "رقم وليّ الأمر",  type: "هاتف",    required: true,  active: true,  desc: "متاح ٢٤ ساعة أثناء الرحلة." },
+  { key: "health",  label: "مقترحك للسفرة",   type: "نص طويل", required: false, active: true,  desc: "ملاحظاتك واقتراحاتك للرحلة (اختياري)." },
   { key: "notes",   label: "ملاحظات أخرى",    type: "نص طويل", required: false, active: false, desc: "معلومات إضافيّة (اختياري)." },
 ];
 
-export type LogoDisplayMode = "VISIBLE" | "BLURRED" | "HIDDEN";
+export type LogoDisplayMode = "VISIBLE" | "BLURRED" | "HIDDEN" | "ANIMATED";
+
+/** ألوان الهوية المشتقّة من الشعار (البند ٦) — تتجاوز ألوان الثيم الافتراضيّة. */
+export type BrandColors = { accent: string; accentWarm: string };
 
 export type State = {
   teams:        Team[];
@@ -46,6 +53,18 @@ export type State = {
   trashInvoices: Invoice[];
   /** site-wide logo visibility, controlled by the Prince (settings) */
   logoDisplayMode: LogoDisplayMode;
+  /** جُمل تحفيزيّة كاملة (شاشة الانتظار) — يُحرّرها الأمير */
+  motivations: string[];
+  /** جُمل قصيرة للأشرطة المتحرّكة خلف نموذج التسجيل */
+  tickerPhrases: string[];
+  /** رسالة السفرة (تُعرض في الصفحة الرئيسيّة) — يُحرّرها الأمير */
+  tripMessage: string;
+  /** شعارٌ مخصّص يرفعه الأمير (Data URL). فارغٌ = الشعار الافتراضي /logo.png */
+  logoUrl: string;
+  /** ألوان الهوية المشتقّة من الشعار — null = ألوان الثيم الافتراضيّة */
+  brandColors: BrandColors | null;
+  /** خلفيّة تحفيزيّة متحرّكة لكلّ صفحة — يُحرّرها الأمير (المفتاح = صفحة) */
+  pageMarquees: PageMarqueeMap;
 };
 
 const initialState: State = {
@@ -58,7 +77,13 @@ const initialState: State = {
   regOpen:      true,
   attendance:   {},
   trashInvoices: [],
-  logoDisplayMode: "VISIBLE",
+  logoDisplayMode: "ANIMATED",
+  motivations:   DEFAULT_MOTIVATIONS,
+  tickerPhrases: DEFAULT_TICKER,
+  tripMessage:   "",
+  logoUrl:       "",
+  brandColors:   null,
+  pageMarquees:  {},
 };
 
 export type StoreActions = {
@@ -77,12 +102,18 @@ export type StoreActions = {
   moveStudent(id: string, newTeamId: string): void;
   setPayment(id: string, status: PaymentStatus, paid: number): void;
   setStudentPhoto(id: string, dataUrl: string): void;
+  /** البند ١٠: يرفع الطالب إيصال السداد (قيد المراجعة) */
+  submitReceipt(id: string, dataUrl: string, amount: number): void;
+  /** البند ١٠: يعتمد الأمير الإيصال أو يرفضه */
+  reviewReceipt(id: string, approve: boolean): void;
   // Supervisors
-  addSupervisor(name: string, phone: string, email: string, teamIds: string[], committeeIds: string[]): void;
+  addSupervisor(name: string, phone: string, email: string, teamIds: string[], committeeIds: string[], permissions: string[]): void;
+  /** استيراد جماعي من ملف Excel/CSV */
+  importSupervisors(rows: { name: string; phone: string; email: string }[]): void;
   updateSupervisor(id: string, patch: Partial<Supervisor>): void;
   deleteSupervisor(id: string): void;
   // Committees
-  addCommittee(name: string, description: string, supervisorIds: string[], color: string): void;
+  addCommittee(name: string, description: string, supervisorIds: string[], color: string, imageDataUrl?: string): void;
   updateCommittee(id: string, patch: Partial<Committee>): void;
   deleteCommittee(id: string): void;
   // Invoices
@@ -94,12 +125,23 @@ export type StoreActions = {
   toggleRegField(key: string): void;
   reorderRegField(key: string, dir: "up" | "down"): void;
   addRegField(field: Omit<RegField, "active">): void;
+  updateRegField(key: string, patch: Partial<Omit<RegField, "key">>): void;
   removeRegField(key: string): void;
   setRegOpen(open: boolean): void;
   // Attendance
   toggleAttendance(studentId: string, day: number): void;
   // Logo display (Prince only)
   setLogoDisplayMode(mode: LogoDisplayMode): void;
+  // Motivational phrases (Prince only)
+  setMotivations(list: string[]): void;
+  setTickerPhrases(list: string[]): void;
+  // Trip message (Prince only)
+  setTripMessage(text: string): void;
+  // Site logo image + brand colors (Prince only) — البند ٦
+  setLogoUrl(url: string): void;
+  setBrandColors(colors: BrandColors | null): void;
+  // Per-page background marquee (Prince only)
+  setPageMarquee(key: string, cfg: PageMarquee): void;
   // Reset
   resetAll(): void;
 };
@@ -201,16 +243,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return record;
     },
     approveStudent(id, teamId) {
+      const code = Math.random().toString(36).slice(2, 8).toUpperCase();
       update(s => {
         const st = s.students.find(x => x.id === id);
         if (!st) return {};
-        const code = Math.random().toString(36).slice(2, 8).toUpperCase();
         return {
           students: s.students.map(x => x.id === id ? { ...x, approvalStatus: "APPROVED", teamId, accessCode: code } : x),
           teams: teamId ? s.teams.map(t => t.id === teamId ? { ...t, studentCount: t.studentCount + 1 } : t) : s.teams,
         };
       });
-      persist(() => dbApproveStudent(id, teamId));
+      persist(() => dbApproveStudent(id, teamId, code));
     },
     rejectStudent(id) {
       update(s => ({ students: s.students.map(x => x.id === id ? { ...x, approvalStatus: "REJECTED" } : x) }));
@@ -253,15 +295,41 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       update(s => ({ students: s.students.map(st => st.id === id ? { ...st, paymentStatus: status, paidAmount: paid } : st) }));
       persist(() => dbSetPayment(id, status, paid));
     },
+    submitReceipt(id, dataUrl, amount) {
+      update(s => ({ students: s.students.map(st => st.id === id
+        ? { ...st, receiptDataUrl: dataUrl, receiptStatus: "PENDING", receiptAmount: amount, receiptSubmittedAt: new Date().toISOString() }
+        : st) }));
+      persist(() => dbSubmitReceipt(id, dataUrl, amount));
+    },
+    reviewReceipt(id, approve) {
+      update(s => ({ students: s.students.map(st => {
+        if (st.id !== id) return st;
+        if (!approve) return { ...st, receiptStatus: "REJECTED" };
+        const amount = st.receiptAmount ?? 0;
+        const status: PaymentStatus = amount >= st.totalAmount ? "PAID" : amount > 0 ? "PARTIAL" : "PENDING";
+        return { ...st, receiptStatus: "APPROVED", paymentStatus: status, paidAmount: amount };
+      }) }));
+      persist(() => dbReviewReceipt(id, approve));
+    },
 
-    addSupervisor(name, phone, email, teamIds, committeeIds) {
+    addSupervisor(name, phone, email, teamIds, committeeIds, permissions) {
+      const code = Math.random().toString(36).slice(2, 8).toUpperCase();
       update(s => ({
         supervisors: [...s.supervisors, {
-          id: uid("s"), name, phone, email, teamIds, committeeIds,
+          id: uid("s"), name, phone, email, teamIds, committeeIds, permissions, accessCode: code,
           nationalIdMasked: "••••••" + Math.floor(1000 + Math.random() * 8999),
         }],
       }));
-      persist(() => dbAddSupervisor(name, phone, email, teamIds, committeeIds));
+      persist(() => dbAddSupervisor(name, phone, email, teamIds, committeeIds, permissions, code));
+    },
+    importSupervisors(rows) {
+      update(s => ({
+        supervisors: [...s.supervisors, ...rows.map(r => ({
+          id: uid("s"), name: r.name, phone: r.phone, email: r.email, teamIds: [], committeeIds: [], permissions: [],
+          nationalIdMasked: "••••••" + Math.floor(1000 + Math.random() * 8999),
+        }))],
+      }));
+      persist(() => dbImportSupervisors(rows));
     },
     updateSupervisor(id, patch) {
       update(s => ({ supervisors: s.supervisors.map(x => x.id === id ? { ...x, ...patch } : x) }));
@@ -272,11 +340,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       persist(() => dbDeleteSupervisor(id));
     },
 
-    addCommittee(name, description, supervisorIds, color) {
+    addCommittee(name, description, supervisorIds, color, imageDataUrl) {
       update(s => ({
-        committees: [...s.committees, { id: uid("c"), name, description, supervisorIds, color }],
+        committees: [...s.committees, { id: uid("c"), name, description, supervisorIds, color, imageDataUrl }],
       }));
-      persist(() => dbAddCommittee(name, description, supervisorIds, color));
+      persist(() => dbAddCommittee(name, description, supervisorIds, color, imageDataUrl));
     },
     updateCommittee(id, patch) {
       update(s => ({ committees: s.committees.map(x => x.id === id ? { ...x, ...patch } : x) }));
@@ -339,6 +407,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       update(s => ({ regFields: [...s.regFields, { ...field, active: true }] }));
       persist(() => dbAddRegField(field));
     },
+    updateRegField(key, patch) {
+      update(s => ({ regFields: s.regFields.map(f => f.key === key ? { ...f, ...patch } : f) }));
+      persist(() => dbUpdateRegField(key, patch));
+    },
     removeRegField(key) {
       update(s => ({ regFields: s.regFields.filter(f => f.key !== key) }));
       persist(() => dbRemoveRegField(key));
@@ -361,6 +433,35 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setLogoDisplayMode(mode) {
       update({ logoDisplayMode: mode });
       persist(() => dbSetLogoDisplayMode(mode));
+    },
+
+    setMotivations(list) {
+      update({ motivations: list });
+      persist(() => dbSetMotivations(list));
+    },
+    setTickerPhrases(list) {
+      update({ tickerPhrases: list });
+      persist(() => dbSetTickerPhrases(list));
+    },
+    setTripMessage(text) {
+      update({ tripMessage: text });
+      persist(() => dbSetTripMessage(text));
+    },
+    setLogoUrl(url) {
+      update({ logoUrl: url });
+      persist(() => dbSetLogoUrl(url));
+    },
+    setBrandColors(colors) {
+      update({ brandColors: colors });
+      persist(() => dbSetBrandColors(colors));
+    },
+    setPageMarquee(key, cfg) {
+      let nextMap: PageMarqueeMap = {};
+      update(s => {
+        nextMap = { ...s.pageMarquees, [key]: cfg };
+        return { pageMarquees: nextMap };
+      });
+      persist(() => dbSetPageMarquees(nextMap));
     },
 
     resetAll() {

@@ -11,6 +11,15 @@ import {
   rowToInvoice, invoiceToRow,
   rowToRegField,
 } from "./mappers";
+import { motivations as DEFAULT_MOTIVATIONS, tickerPhrases as DEFAULT_TICKER } from "@/lib/motivations";
+import type { PageMarqueeMap } from "@/lib/pageMarquees";
+
+/** يقرأ مصفوفة نصوصٍ من عمود JSON مع تنظيفٍ ورجوعٍ للافتراضيّات عند الفراغ. */
+function readPhrases(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) return fallback;
+  const clean = value.filter((x): x is string => typeof x === "string" && x.trim() !== "");
+  return clean.length ? clean : fallback;
+}
 
 const uid = (prefix: string) =>
   `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
@@ -75,7 +84,15 @@ export async function loadAllData(): Promise<State> {
     trashInvoices:  allInvoices.filter(i => trashIds.has(i.id)),
     regFields:      (regRows.data ?? []).map(rowToRegField),
     regOpen:        settings.data?.reg_open ?? true,
-    logoDisplayMode: (settings.data?.logo_display_mode ?? "VISIBLE") as LogoDisplayMode,
+    logoDisplayMode: (settings.data?.logo_display_mode ?? "ANIMATED") as LogoDisplayMode,
+    motivations:    readPhrases(settings.data?.motivations, DEFAULT_MOTIVATIONS),
+    tickerPhrases:  readPhrases(settings.data?.ticker_phrases, DEFAULT_TICKER),
+    tripMessage:    settings.data?.trip_message ?? "",
+    logoUrl:        settings.data?.logo_url ?? "",
+    brandColors:    (settings.data?.brand_accent && settings.data?.brand_accent_warm)
+      ? { accent: settings.data.brand_accent as string, accentWarm: settings.data.brand_accent_warm as string }
+      : null,
+    pageMarquees:   (settings.data?.page_marquees ?? {}) as PageMarqueeMap,
     attendance,
   };
 }
@@ -168,12 +185,40 @@ export async function dbRegisterStudent(input: {
   return rowToStudent(data);
 }
 
-export async function dbApproveStudent(id: string, teamId: string) {
-  const code = Math.random().toString(36).slice(2, 8).toUpperCase();
-  await getSupabase().from("students").update(
+/** يوفّر (أو يُحدّث) حساب دخولٍ لمشرفٍ/مستفيدٍ عبر دالّة upsert_login في القاعدة.
+ *  الرمز يُشفَّر داخل القاعدة (bcrypt)؛ نسخته الصريحة تُخزَّن على صفّ المشرف/الطالب فقط. */
+async function dbUpsertLogin(opts: {
+  phone: string; code: string; name: string;
+  role: "SUPERVISOR" | "BENEFICIARY"; supervisorId?: string; studentId?: string; landing: string;
+}) {
+  if (!opts.phone.trim()) return; // لا حساب دون جوّال
+  const { error } = await getSupabase().rpc("upsert_login", {
+    p_id: uid("acc"),
+    p_phone: opts.phone.trim(),
+    p_code: opts.code,
+    p_name: opts.name,
+    p_role: opts.role,
+    p_supervisor_id: opts.supervisorId ?? "",
+    p_student_id: opts.studentId ?? "",
+    p_landing: opts.landing,
+  });
+  if (error) throw error;
+}
+
+export async function dbApproveStudent(id: string, teamId: string, code: string) {
+  const db = getSupabase();
+  await db.from("students").update(
     studentToRow({ approvalStatus: "APPROVED", teamId, accessCode: code }),
   ).eq("id", id);
   if (teamId) await bumpTeamCount(teamId, 1);
+  // يُنشأ حساب دخول المستفيد فوراً برمزٍ صالحٍ يظهر للأمير.
+  const { data } = await db.from("students").select("name, phone").eq("id", id).single();
+  if (data) {
+    await dbUpsertLogin({
+      phone: data.phone ?? "", code, name: data.name ?? "مستفيد",
+      role: "BENEFICIARY", studentId: id, landing: "/me",
+    });
+  }
 }
 export async function dbRejectStudent(id: string) {
   await getSupabase().from("students").update(studentToRow({ approvalStatus: "REJECTED" })).eq("id", id);
@@ -202,6 +247,32 @@ export async function dbMoveStudent(id: string, newTeamId: string) {
 export async function dbSetPayment(id: string, status: PaymentStatus, paid: number) {
   await getSupabase().from("students").update({ payment_status: status, paid_amount: paid }).eq("id", id);
 }
+/** البند ١٠: يرفع الطالبُ إيصال السداد — يُخزَّن بانتظار اعتماد الأمير. */
+export async function dbSubmitReceipt(id: string, dataUrl: string, amount: number) {
+  await getSupabase().from("students").update({
+    receipt_data_url: dataUrl,
+    receipt_status: "PENDING",
+    receipt_amount: amount,
+    receipt_submitted_at: new Date().toISOString(),
+  }).eq("id", id);
+}
+/** البند ١٠: يعتمد الأميرُ الإيصال (PAID بالمبلغ المُصرَّح) أو يرفضه (يبقى معلّقاً). */
+export async function dbReviewReceipt(id: string, approve: boolean) {
+  const db = getSupabase();
+  if (!approve) {
+    await db.from("students").update({ receipt_status: "REJECTED" }).eq("id", id);
+    return;
+  }
+  const { data } = await db.from("students").select("receipt_amount, total_amount").eq("id", id).single();
+  const amount = data?.receipt_amount ?? 0;
+  const total = data?.total_amount ?? 0;
+  const status: PaymentStatus = amount >= total ? "PAID" : amount > 0 ? "PARTIAL" : "PENDING";
+  await db.from("students").update({
+    receipt_status: "APPROVED",
+    payment_status: status,
+    paid_amount: amount,
+  }).eq("id", id);
+}
 
 async function bumpTeamCount(teamId: string, delta: number) {
   const db = getSupabase();
@@ -213,13 +284,28 @@ async function bumpTeamCount(teamId: string, delta: number) {
 
 /* ─────────────────────────── المشرفون ─────────────────────────── */
 
-export async function dbAddSupervisor(name: string, phone: string, email: string, teamIds: string[], committeeIds: string[]) {
+export async function dbAddSupervisor(name: string, phone: string, email: string, teamIds: string[], committeeIds: string[], permissions: string[], code: string) {
   const id = uid("s");
   await getSupabase().from("supervisors").insert(
-    supervisorToRow({ id, name, phone, email, nationalIdMasked: maskNid() }),
+    supervisorToRow({ id, name, phone, email, permissions, nationalIdMasked: maskNid(), accessCode: code }),
   );
   await setSupervisorTargets(id, "team", teamIds);
   await setSupervisorTargets(id, "committee", committeeIds);
+  // يُنشأ حساب دخول المشرف فوراً برمزٍ صالحٍ يظهر للأمير.
+  await dbUpsertLogin({
+    phone, code, name, role: "SUPERVISOR", supervisorId: id, landing: "/my-team",
+  });
+}
+/** استيراد جماعي للمشرفين من ملف (Excel/CSV). يُدرج الأسماء دفعةً واحدة
+ *  ويُعيد عدد المُدرَجين. لا يُنشئ تعيينات فرق/لجان (تُضاف لاحقاً يدوياً). */
+export async function dbImportSupervisors(rows: { name: string; phone: string; email: string }[]) {
+  if (!rows.length) return 0;
+  const payload = rows.map(r =>
+    supervisorToRow({ id: uid("s"), name: r.name, phone: r.phone, email: r.email, nationalIdMasked: maskNid() }),
+  );
+  const { error } = await getSupabase().from("supervisors").insert(payload);
+  if (error) throw error;
+  return rows.length;
 }
 export async function dbUpdateSupervisor(id: string, patch: Partial<Supervisor>) {
   const row = supervisorToRow(patch);
@@ -234,10 +320,10 @@ export async function dbDeleteSupervisor(id: string) {
 
 /* ─────────────────────────── اللجان ─────────────────────────── */
 
-export async function dbAddCommittee(name: string, description: string, supervisorIds: string[], color: string) {
+export async function dbAddCommittee(name: string, description: string, supervisorIds: string[], color: string, imageDataUrl?: string) {
   const id = uid("c");
   await getSupabase().from("committees").insert(
-    committeeToRow({ id, name, description, color }),
+    committeeToRow({ id, name, description, color, imageDataUrl }),
   );
   await setCommitteeSupervisors(id, supervisorIds);
 }
@@ -296,6 +382,16 @@ export async function dbAddRegField(field: Omit<RegField, "active">) {
     key: field.key, label: field.label, type: field.type, required: field.required, active: true, descr: field.desc, sort,
   });
 }
+export async function dbUpdateRegField(key: string, patch: Partial<Omit<RegField, "key">>) {
+  const row = {
+    ...(patch.label !== undefined && { label: patch.label }),
+    ...(patch.type !== undefined && { type: patch.type }),
+    ...(patch.required !== undefined && { required: patch.required }),
+    ...(patch.active !== undefined && { active: patch.active }),
+    ...(patch.desc !== undefined && { descr: patch.desc }),
+  };
+  if (Object.keys(row).length) await getSupabase().from("reg_fields").update(row).eq("key", key);
+}
 export async function dbRemoveRegField(key: string) {
   await getSupabase().from("reg_fields").delete().eq("key", key);
 }
@@ -312,7 +408,41 @@ export async function dbToggleAttendance(studentId: string, day: number) {
   await db.from("attendance").upsert({ student_id: studentId, day, present });
 }
 export async function dbSetLogoDisplayMode(mode: LogoDisplayMode) {
-  await getSupabase().from("app_settings").update({ logo_display_mode: mode }).eq("id", 1);
+  const { error } = await getSupabase().from("app_settings").update({ logo_display_mode: mode }).eq("id", 1);
+  if (error) throw error;
+}
+export async function dbSetMotivations(list: string[]) {
+  const { error } = await getSupabase().from("app_settings").update({ motivations: list }).eq("id", 1);
+  if (error) throw error;
+}
+export async function dbSetTickerPhrases(list: string[]) {
+  const { error } = await getSupabase().from("app_settings").update({ ticker_phrases: list }).eq("id", 1);
+  if (error) throw error;
+}
+export async function dbSetTripMessage(text: string) {
+  const { error } = await getSupabase().from("app_settings").update({ trip_message: text }).eq("id", 1);
+  if (error) throw error;
+}
+/** البند ٦: يحفظ شعار الموقع المخصّص (Data URL). فارغٌ = استعادة الشعار الافتراضي. */
+export async function dbSetLogoUrl(url: string) {
+  const { error } = await getSupabase().from("app_settings").update({ logo_url: url || null }).eq("id", 1);
+  if (error) throw error;
+}
+/** البند ٦: يحفظ ألوان الهوية المشتقّة من الشعار. null = استعادة ألوان الثيم الافتراضيّة. */
+export async function dbSetBrandColors(colors: { accent: string; accentWarm: string } | null) {
+  const { error } = await getSupabase().from("app_settings").update({
+    brand_accent:      colors?.accent ?? null,
+    brand_accent_warm: colors?.accentWarm ?? null,
+  }).eq("id", 1);
+  if (error) throw error;
+}
+
+/** يحفظ خريطة خلفيّات الصفحات المتحرّكة (الجُمل + النمط + التفعيل لكلّ صفحة). */
+export async function dbSetPageMarquees(map: PageMarqueeMap) {
+  const { error } = await getSupabase().from("app_settings").update({
+    page_marquees: map,
+  }).eq("id", 1);
+  if (error) throw error;
 }
 
 /* ─────────────────────────── التصفير ─────────────────────────── */

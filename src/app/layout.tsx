@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Cairo, El_Messiri, Playfair_Display, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { StoreProvider } from "@/lib/store/StoreProvider";
+import { BrandTheme } from "@/components/BrandTheme";
+import { BackgroundMarquee } from "@/components/BackgroundMarquee";
 
 const cairo = Cairo({
   variable: "--font-cairo",
@@ -33,7 +35,7 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "معالي أبها ١٤٤٨هـ",
+  title: "معالي محافظة بلّسمر ١٤٤٨هـ",
   description: "منصّة إدارة الرحلات التربويّة — من مرتفعات عسير.",
 };
 
@@ -47,7 +49,11 @@ export default function RootLayout({
       className={`${cairo.variable} ${messiri.variable} ${playfair.variable} ${jetbrains.variable} antialiased`}
     >
       <body className="min-h-screen bg-bg text-text">
-        <StoreProvider>{children}</StoreProvider>
+        <StoreProvider>
+          <BrandTheme />
+          <BackgroundMarquee />
+          <div style={{ position: "relative", zIndex: 1 }}>{children}</div>
+        </StoreProvider>
       </body>
     </html>
   );

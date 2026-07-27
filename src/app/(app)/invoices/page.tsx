@@ -11,11 +11,10 @@ import { Field } from "@/components/ui/Field";
 import { useStore } from "@/lib/store/StoreProvider";
 import { downloadCSV } from "@/lib/download";
 import type { Invoice } from "@/lib/mock/types";
-
-const sar = (n: number) => new Intl.NumberFormat("ar-SA-u-nu-latn").format(n);
+import { sar } from "@/lib/format";
 
 export default function InvoicesPage() {
-  useEffect(() => { document.title = "الفواتير — معالي أبها"; }, []);
+  useEffect(() => { document.title = "الفواتير — معالي محافظة بلّسمر"; }, []);
   const { invoices, teams, committees, addInvoice } = useStore();
   const [statusFilter, setStatusFilter] = useState<"ALL" | Invoice["status"]>("ALL");
   const [q, setQ] = useState("");
@@ -79,7 +78,7 @@ export default function InvoicesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1180px] px-6 py-8">
+    <div className="page-shell">
       <PageHeader
         eyebrow="الفواتير"
         title="الفواتير"

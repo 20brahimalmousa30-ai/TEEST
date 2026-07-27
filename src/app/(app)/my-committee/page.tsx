@@ -18,7 +18,7 @@ export default function MyCommitteePage() {
     else if (session.role === "PRINCE" || session.role === "DEPUTY_PRINCE") router.replace("/committees");
     else if (session.role === "BENEFICIARY") router.replace("/me");
   }, [ready, session, router]);
-  useEffect(() => { document.title = "لجنتي — معالي أبها"; }, []);
+  useEffect(() => { document.title = "لجنتي — معالي محافظة بلّسمر"; }, []);
 
   if (!hydrated || !ready || !session || session.role !== "SUPERVISOR") return null;
 
@@ -35,7 +35,7 @@ export default function MyCommitteePage() {
   const peers = committee.supervisorIds.map(id => supervisors.find(s => s.id === id)).filter(Boolean);
 
   return (
-    <div className="mx-auto max-w-[1180px] px-6 py-8">
+    <div className="page-shell">
       <PageHeader eyebrow="لجنتي" title={committee.name} subtitle={committee.description} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

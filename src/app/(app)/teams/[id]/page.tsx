@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { Card } from "@/components/ui/Card";
@@ -12,6 +12,7 @@ import { Modal, Confirm } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Field";
 import { useStore } from "@/lib/store/StoreProvider";
 import { downloadCSV } from "@/lib/download";
+import { fileToDataUrl, extractDominantColor } from "@/lib/image";
 import type { Student } from "@/lib/mock/types";
 
 const grades = ["الأول ثانوي", "الثاني ثانوي", "الثالث ثانوي"];
@@ -20,14 +21,16 @@ const sections = ["ريادة", "علو", "قيادة"] as const;
 export default function TeamDetail() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { teams, students, supervisors, deleteTeam, addStudent } = useStore();
+  const { teams, students, supervisors, deleteTeam, addStudent, updateTeam } = useStore();
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [delOpen, setDelOpen] = useState(false);
+  const [imgErr, setImgErr] = useState("");
+  const imgRef = useRef<HTMLInputElement | null>(null);
   const [form, setForm] = useState({ name: "", phone: "", grade: grades[0], section: sections[0] as (typeof sections)[number] });
 
   const team = teams.find(t => t.id === params.id);
-  useEffect(() => { document.title = team ? `فريق ${team.name} — معالي أبها` : "الفرق"; }, [team]);
+  useEffect(() => { document.title = team ? `فريق ${team.name} — معالي محافظة بلّسمر` : "الفرق"; }, [team]);
 
   if (!team) {
     return (
@@ -84,14 +87,31 @@ export default function TeamDetail() {
     window.open(`https://wa.me/?text=${msg}`, "_blank", "noopener");
   }
 
+  async function onTeamImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setImgErr("الملف يجب أن يكون صورة."); return; }
+    if (file.size > 5 * 1024 * 1024) { setImgErr("الحدّ الأقصى ٥ ميغابايت."); return; }
+    setImgErr("");
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      // البند ١٨: يُشتقّ اللون المميّز تلقائياً من الصورة المرفوعة.
+      const color = await extractDominantColor(dataUrl).catch(() => team!.color);
+      updateTeam(team!.id, { imageDataUrl: dataUrl, color });
+    } catch {
+      setImgErr("تعذّرت قراءة الصورة.");
+    }
+  }
+
   return (
-    <div className="mx-auto max-w-[1180px] px-6 py-8">
+    <div className="page-shell">
       <PageHeader
         eyebrow="تفاصيلُ الفريق"
         crumbs={[{ href: "/teams", label: "الفرق" }, { label: `فريق ${team.name}` }]}
         title={`فريق ${team.name}`}
         subtitle={team.tagline}
-        action={<TeamBadge letters={team.badge} color={team.color} size={44} />}
+        action={<TeamBadge letters={team.badge} color={team.color} size={44} image={team.imageDataUrl} />}
       />
 
       <section className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -153,6 +173,25 @@ export default function TeamDetail() {
                 </div>
               </div>
             ) : <p className="text-text-3">لا مشرفٌ معيّن</p>}
+          </Card>
+
+          <Card title="هُويّة الفريق">
+            <div className="flex items-center gap-4">
+              <TeamBadge letters={team.badge} color={team.color} size={56} image={team.imageDataUrl} />
+              <div className="flex-1">
+                <input ref={imgRef} type="file" accept="image/*" onChange={onTeamImage} className="hidden" />
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" onClick={() => imgRef.current?.click()}>
+                    {team.imageDataUrl ? "تغيير الصورة" : "رفع صورة"}
+                  </Button>
+                  {team.imageDataUrl && (
+                    <Button variant="ghost" onClick={() => updateTeam(team.id, { imageDataUrl: "" })}>إزالة</Button>
+                  )}
+                </div>
+                <p className="mt-2 text-[12px] text-text-3">يُشتقّ لونُ الفريق تلقائياً من الصورة — بحدٍّ أقصى ٥ ميغابايت.</p>
+                {imgErr && <p className="mt-1 text-[12px] text-critical">{imgErr}</p>}
+              </div>
+            </div>
           </Card>
 
           <Card title="الإجراءات">

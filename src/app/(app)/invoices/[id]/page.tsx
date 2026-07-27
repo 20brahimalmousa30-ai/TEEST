@@ -8,8 +8,7 @@ import { Pill } from "@/components/ui/Pill";
 import { Button } from "@/components/ui/Button";
 import { useStore } from "@/lib/store/StoreProvider";
 import { printPage } from "@/lib/download";
-
-const sar = (n: number) => new Intl.NumberFormat("ar-SA-u-nu-latn").format(n);
+import { sar } from "@/lib/format";
 
 export default function InvoiceDetail() {
   const params = useParams<{ id: string }>();
@@ -35,7 +34,7 @@ export default function InvoiceDetail() {
     : committees.find(c => c.id === scope.committeeId)?.name ?? "—";
 
   return (
-    <div className="mx-auto max-w-[1180px] px-6 py-8">
+    <div className="page-shell">
       <PageHeader
         eyebrow="تفاصيل الفاتورة"
         crumbs={[{ href: "/invoices", label: "الفواتير" }, { label: inv.code }]}

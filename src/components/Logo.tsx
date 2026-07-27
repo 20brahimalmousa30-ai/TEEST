@@ -12,12 +12,14 @@ type LogoProps = {
 };
 
 export function Logo({ size = 48, className, priority = false }: LogoProps) {
-  const { logoDisplayMode } = useStore();
+  const { logoDisplayMode, logoUrl } = useStore();
 
   // Prince-controlled, site-wide: hide the mark entirely.
   if (logoDisplayMode === "HIDDEN") return null;
 
   const blurred = logoDisplayMode === "BLURRED";
+  const animated = logoDisplayMode === "ANIMATED";
+  const custom = (logoUrl ?? "").trim();
 
   // Source is a square-cropped image; render as square, use object-contain
   // so the actual mark centres cleanly inside whatever height is asked.
@@ -25,17 +27,28 @@ export function Logo({ size = 48, className, priority = false }: LogoProps) {
     <span
       className={`inline-flex items-center justify-center ${className ?? ""}`}
       style={{ height: size, width: size }}
-      aria-label="معالي أبها ١٤٤٨هـ"
+      aria-label="معالي محافظة بلّسمر ١٤٤٨هـ"
     >
-      <Image
-        src="/logo.png"
-        alt="معالي أبها ١٤٤٨هـ"
-        width={size}
-        height={size}
-        priority={priority}
-        className="h-full w-full object-contain"
-        style={blurred ? { filter: "blur(7px)", opacity: 0.85 } : undefined}
-      />
+      {custom ? (
+        // شعارٌ مخصّص (Data URL) — يُعرض بوسم img عادي لتجنّب تحسين next/image.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={custom}
+          alt="معالي محافظة بلّسمر ١٤٤٨هـ"
+          className={`h-full w-full object-contain${animated ? " logo-animated" : ""}`}
+          style={blurred ? { filter: "blur(7px)", opacity: 0.85 } : undefined}
+        />
+      ) : (
+        <Image
+          src="/logo.png"
+          alt="معالي محافظة بلّسمر ١٤٤٨هـ"
+          width={size}
+          height={size}
+          priority={priority}
+          className={`h-full w-full object-contain${animated ? " logo-animated" : ""}`}
+          style={blurred ? { filter: "blur(7px)", opacity: 0.85 } : undefined}
+        />
+      )}
     </span>
   );
 }

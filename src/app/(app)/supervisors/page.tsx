@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
@@ -8,25 +8,66 @@ import { Modal, Confirm } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Field";
 import { useStore } from "@/lib/store/StoreProvider";
 import type { Supervisor } from "@/lib/mock/types";
+import { SUPERVISOR_PERMISSIONS } from "@/lib/mock/types";
+import { toCSV, parseCSV, downloadCSV } from "@/lib/spreadsheet";
 
-const empty = { name: "", phone: "", email: "", teamIds: [] as string[], committeeIds: [] as string[] };
+const empty = { name: "", phone: "", email: "", teamIds: [] as string[], committeeIds: [] as string[], permissions: [] as string[] };
 
 export default function SupervisorsPage() {
-  useEffect(() => { document.title = "المشرفون — معالي أبها"; }, []);
-  const { supervisors, teams, committees, addSupervisor, updateSupervisor, deleteSupervisor } = useStore();
+  useEffect(() => { document.title = "المشرفون — معالي محافظة بلّسمر"; }, []);
+  const { supervisors, teams, committees, addSupervisor, updateSupervisor, deleteSupervisor, importSupervisors } = useStore();
   const [modalId, setModalId] = useState<"new" | string | null>(null);
   const [toDelete, setToDelete] = useState<Supervisor | null>(null);
   const [form, setForm] = useState({ ...empty });
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  function exportExcel() {
+    const header = ["الاسم", "الجوّال", "البريد", "عدد الفرق", "عدد اللجان"];
+    const rows = supervisors.map(s => [s.name, s.phone, s.email, s.teamIds.length, s.committeeIds.length]);
+    downloadCSV(`المشرفون-${new Date().toISOString().slice(0, 10)}.csv`, toCSV([header, ...rows]));
+  }
+
+  async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // للسماح بإعادة اختيار الملف نفسه
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const grid = parseCSV(text);
+      if (!grid.length) { setImportMsg({ ok: false, text: "الملفّ فارغ." }); return; }
+      // تخطّي صفّ الترويسة إن بدا كذلك (يحوي كلمة «الاسم» أو «name»).
+      const first = (grid[0][0] || "").toLowerCase();
+      const body = /الاسم|name|اسم/.test(first) ? grid.slice(1) : grid;
+      const seen = new Set(supervisors.map(s => s.phone.trim()));
+      const parsed: { name: string; phone: string; email: string }[] = [];
+      let skipped = 0;
+      for (const r of body) {
+        const name = (r[0] || "").trim();
+        const phone = (r[1] || "").trim();
+        const email = (r[2] || "").trim();
+        if (!name) { skipped++; continue; }
+        if (phone && seen.has(phone)) { skipped++; continue; }
+        if (phone) seen.add(phone);
+        parsed.push({ name, phone, email });
+      }
+      if (!parsed.length) { setImportMsg({ ok: false, text: `لم يُستورَد أيّ صفّ صالح (${skipped} صفّاً متجاوَزاً).` }); return; }
+      importSupervisors(parsed);
+      setImportMsg({ ok: true, text: `استُورد ${parsed.length} مشرفاً${skipped ? ` — تُخطّي ${skipped} صفّاً (مكرّر/ناقص).` : "."}` });
+    } catch {
+      setImportMsg({ ok: false, text: "تعذّرت قراءة الملفّ. تأكّد أنّه بصيغة CSV/Excel." });
+    }
+  }
 
   function openNew() {
     setForm({ ...empty });
     setModalId("new");
   }
   function openEdit(s: Supervisor) {
-    setForm({ name: s.name, phone: s.phone, email: s.email, teamIds: [...s.teamIds], committeeIds: [...s.committeeIds] });
+    setForm({ name: s.name, phone: s.phone, email: s.email, teamIds: [...s.teamIds], committeeIds: [...s.committeeIds], permissions: [...(s.permissions ?? [])] });
     setModalId(s.id);
   }
-  function toggleFrom(list: "teamIds" | "committeeIds", id: string) {
+  function toggleFrom(list: "teamIds" | "committeeIds" | "permissions", id: string) {
     setForm(f => f[list].includes(id)
       ? { ...f, [list]: f[list].filter(x => x !== id) }
       : { ...f, [list]: [...f[list], id] });
@@ -35,7 +76,7 @@ export default function SupervisorsPage() {
     e.preventDefault();
     if (!form.name.trim()) return;
     if (modalId === "new") {
-      addSupervisor(form.name.trim(), form.phone.trim(), form.email.trim(), form.teamIds, form.committeeIds);
+      addSupervisor(form.name.trim(), form.phone.trim(), form.email.trim(), form.teamIds, form.committeeIds, form.permissions);
     } else if (modalId) {
       updateSupervisor(modalId, form);
     }
@@ -43,13 +84,32 @@ export default function SupervisorsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1180px] px-6 py-8">
+    <div className="page-shell">
       <PageHeader
         eyebrow="المشرفون"
         title="المشرفون"
         subtitle={`${supervisors.length} مشرفاً. المشرف الواحد قد يقود فريقاً وينتمي لأكثر من لجنةٍ معاً.`}
-        action={<Button variant="primary" onClick={openNew}>+ إضافة مشرف</Button>}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => fileRef.current?.click()}>استيراد Excel</Button>
+            <Button variant="outline" onClick={exportExcel}>تصدير Excel</Button>
+            <Button variant="primary" onClick={openNew}>+ إضافة مشرف</Button>
+          </div>
+        }
       />
+
+      <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onImportFile} className="hidden" />
+
+      {importMsg && (
+        <div
+          className={`mb-4 flex items-center justify-between gap-3 rounded-md border px-4 py-3 text-[13px] ${
+            importMsg.ok ? "border-ok/40 bg-ok/10 text-ok" : "border-critical/40 bg-critical/10 text-critical"
+          }`}
+        >
+          <span>{importMsg.text}</span>
+          <button onClick={() => setImportMsg(null)} className="text-text-3 hover:text-text">✕</button>
+        </div>
+      )}
 
       <Card padded={false}>
         <div className="overflow-x-auto">
@@ -60,6 +120,7 @@ export default function SupervisorsPage() {
               <th className="px-5 py-3 text-start font-normal">الاتصال</th>
               <th className="px-5 py-3 text-start font-normal">الفرق</th>
               <th className="px-5 py-3 text-start font-normal">اللجان</th>
+              <th className="px-5 py-3 text-start font-normal">الصلاحيات</th>
               <th className="px-5 py-3 text-end font-normal"></th>
             </tr>
           </thead>
@@ -78,6 +139,12 @@ export default function SupervisorsPage() {
                 <td className="px-5 py-3 text-text-2">
                   <div className="num text-[12.5px]">{sup.phone}</div>
                   <div className="lat text-[11.5px] text-text-3">{sup.email}</div>
+                  {sup.accessCode && (
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className="text-[10.5px] text-text-3">رمز الدخول</span>
+                      <span className="num rounded bg-bg-raised px-2 py-0.5 text-[12px] tracking-wider text-accent">{sup.accessCode}</span>
+                    </div>
+                  )}
                 </td>
                 <td className="px-5 py-3">
                   {sup.teamIds.length > 0
@@ -87,6 +154,11 @@ export default function SupervisorsPage() {
                 <td className="px-5 py-3">
                   {sup.committeeIds.length > 0
                     ? <div className="flex flex-wrap gap-1.5">{sup.committeeIds.map(cid => { const c = committees.find(x => x.id === cid); return c && <Pill key={cid} variant="warn">{c.name}</Pill>; })}</div>
+                    : <span className="text-text-3">—</span>}
+                </td>
+                <td className="px-5 py-3">
+                  {(sup.permissions?.length ?? 0) > 0
+                    ? <div className="flex flex-wrap gap-1.5">{sup.permissions.map(pk => { const p = SUPERVISOR_PERMISSIONS.find(x => x.key === pk); return p && <Pill key={pk} variant="info">{p.label}</Pill>; })}</div>
                     : <span className="text-text-3">—</span>}
                 </td>
                 <td className="px-5 py-3 text-end text-[12.5px]">
@@ -136,6 +208,18 @@ export default function SupervisorsPage() {
                 <label key={c.id} className="flex cursor-pointer items-center gap-2">
                   <input type="checkbox" checked={form.committeeIds.includes(c.id)} onChange={() => toggleFrom("committeeIds", c.id)} className="accent-[color:var(--accent)]" />
                   <span className="text-text-2">{c.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="mb-2 text-[12px] tracking-[.12em] text-text-3">الصلاحيات ({form.permissions.length})</div>
+            <p className="mb-2 text-[11.5px] text-text-3">حدّد الأقسام الإداريّة التي يُسمح لهذا المشرف بالوصول إليها من قائمته الجانبيّة.</p>
+            <div className="grid grid-cols-2 gap-2 rounded border border-line p-3 text-[13px]">
+              {SUPERVISOR_PERMISSIONS.map(p => (
+                <label key={p.key} className="flex cursor-pointer items-center gap-2">
+                  <input type="checkbox" checked={form.permissions.includes(p.key)} onChange={() => toggleFrom("permissions", p.key)} className="accent-[color:var(--accent)]" />
+                  <span className="text-text-2">{p.label}</span>
                 </label>
               ))}
             </div>

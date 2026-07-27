@@ -6,7 +6,6 @@ import { Logo } from "./Logo";
 import { useSession, clearSession, announceSessionChange } from "@/lib/auth/session";
 import { roleLabel } from "@/lib/auth/accounts";
 import { useStore } from "@/lib/store/StoreProvider";
-import { Confirm } from "./ui/Modal";
 
 type NavItem = { href: string; label: string; icon: React.ReactNode; count?: string };
 type NavGroup = { label: string; items: NavItem[] };
@@ -33,7 +32,9 @@ const fullNav: NavGroup[] = [
   {
     label: "الإعداد",
     items: [
+      { href: "/settings/site",         label: "إعدادات الموقع", icon: <IconImage /> },
       { href: "/settings/registration", label: "نموذج التسجيل", icon: <IconSettings /> },
+      { href: "/settings/motivations",  label: "الجُمل التحفيزيّة", icon: <IconSettings /> },
       { href: "/settings/account",      label: "إعدادات الحساب", icon: <IconUser /> },
     ],
   },
@@ -61,23 +62,69 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "";
   const router = useRouter();
   const { session, ready } = useSession();
-  const { resetAll } = useStore();
-  const [resetOpen, setResetOpen] = useState(false);
+  const { supervisors, hydrated } = useStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Beneficiary should not see the shell at all
+  // البند ١٨: صلاحيات المشرف الحاليّ (تُقرأ من المتجر عبر supervisorId في الجلسة).
+  const mySupervisor = session?.role === "SUPERVISOR"
+    ? supervisors.find(s => s.id === session.supervisorId)
+    : undefined;
+  const myPerms = mySupervisor?.permissions ?? [];
+
+  // حارس الدخول: أيّ زائرٍ غير مسجّل (لا جلسة) يُحوَّل لصفحة الدخول —
+  // يمنع الوصول المباشر إلى /dashboard وبقيّة لوحة الإدارة بلا مصادقة.
   useEffect(() => {
     if (!ready) return;
-    if (session?.role === "BENEFICIARY" && pathname !== "/me") {
-      router.replace("/me");
+    if (!session) {
+      router.replace("/login");
+      return;
     }
-  }, [ready, session, pathname, router]);
+    // Beneficiary should not see the shell at all
+    if (session.role === "BENEFICIARY" && pathname !== "/me") {
+      router.replace("/me");
+      return;
+    }
+    // البند ١٨: حارسُ مسارٍ للمشرف — لا يصل قسماً إدارياً إلاّ بصلاحيةٍ ممنوحة.
+    // ننتظر تحميل المتجر أوّلاً حتى لا نطرد المشرف قبل قراءة صلاحياته.
+    if (session.role === "SUPERVISOR" && hydrated) {
+      const allowedPrefixes = [
+        "/my-team", "/my-committee", "/leaderboard", "/settings/account", "/me",
+        ...(myPerms.includes("invoices")   ? ["/invoices"]   : []),
+        ...(myPerms.includes("students")   ? ["/students"]   : []),
+        ...(myPerms.includes("teams")      ? ["/teams"]      : []),
+        ...(myPerms.includes("committees") ? ["/committees"] : []),
+      ];
+      const allowed = allowedPrefixes.some(p => pathname === p || pathname.startsWith(p + "/"));
+      if (!allowed) {
+        router.replace("/my-team");
+      }
+    }
+  }, [ready, session, pathname, router, hydrated, myPerms]);
 
   // Close the mobile drawer whenever the route changes
   useEffect(() => { setDrawerOpen(false); }, [pathname]);
 
+  // البند ١٨: أقسامٌ إداريّةٌ إضافيّة يفتحها الأمير للمشرف عبر الصلاحيات الدقيقة.
+  const supervisorNavWithPerms: NavGroup[] = (() => {
+    if (session?.role !== "SUPERVISOR") return supervisorNav;
+    const me = supervisors.find(s => s.id === session.supervisorId);
+    const perms = me?.permissions ?? [];
+    if (perms.length === 0) return supervisorNav;
+    const extra: NavItem[] = [];
+    if (perms.includes("invoices"))   extra.push({ href: "/invoices",   label: "الفواتير", icon: <IconInvoice /> });
+    if (perms.includes("students"))   extra.push({ href: "/students",   label: "الشباب",    icon: <IconStudents /> });
+    if (perms.includes("teams"))      extra.push({ href: "/teams",      label: "الفرق",     icon: <IconTeams /> });
+    if (perms.includes("committees")) extra.push({ href: "/committees", label: "اللجان",     icon: <IconCommittee /> });
+    if (extra.length === 0) return supervisorNav;
+    return [
+      supervisorNav[0],
+      { label: "صلاحيّاتٌ ممنوحة", items: extra },
+      ...supervisorNav.slice(1),
+    ];
+  })();
+
   const baseGroups: NavGroup[] =
-    session?.role === "SUPERVISOR" ? supervisorNav : fullNav;
+    session?.role === "SUPERVISOR" ? supervisorNavWithPerms : fullNav;
 
   // رابط «إدارة الأمراء» يظهر للمالك الأصل فقط، ضمن مجموعة الإعداد.
   const groups: NavGroup[] = session?.isOwner
@@ -168,12 +215,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             الدخول
           </Link>
         )}
-        <button
-          onClick={() => { setDrawerOpen(false); setResetOpen(true); }}
-          className="mt-2 w-full text-[10.5px] text-text-3 hover:text-critical"
-        >
-          ↺ إعادة كلّ البيانات للحالة الأصليّة
-        </button>
       </div>
     </>
   );
@@ -230,16 +271,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
     </div>
-
-    <Confirm
-      open={resetOpen}
-      onClose={() => setResetOpen(false)}
-      onConfirm={resetAll}
-      title="إعادة البيانات للحالة الأصليّة؟"
-      message="سيُمحى كلّ ما أضفتَه أو عدّلته أو حذفتَه — الفرق، الطلاب، الفواتير، الحضور، الإعدادات — وتعود البيانات كما بدأت. لن تُمحى جلسة الدخول."
-      confirmLabel="نعم، أعِد الكل"
-      danger
-    />
     </>
   );
 }
@@ -254,4 +285,5 @@ function IconInvoice()    { return <svg width="18" height="18" viewBox="0 0 24 2
 function IconTrophy()     { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M8 4h8v5a4 4 0 0 1-8 0V4zM6 6H3v2a3 3 0 0 0 3 3M18 6h3v2a3 3 0 0 1-3 3M10 20h4M12 15v5"/></svg>; }
 function IconSettings()   { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg>; }
 function IconUser()       { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="8" r="3.5"/><path d="M5 21c0-3.9 3.1-7 7-7s7 3.1 7 7"/></svg>; }
+function IconImage()      { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.8"/><path d="M4 18l5-5 4 4 3-3 4 4"/></svg>; }
 function IconCrown()      { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M3 8l4 4 5-7 5 7 4-4-2 11H5L3 8z"/></svg>; }

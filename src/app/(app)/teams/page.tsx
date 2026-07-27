@@ -12,7 +12,7 @@ import { useStore } from "@/lib/store/StoreProvider";
 const swatches = ["#1E4635", "#6B7A3E", "#8C5A3C", "#4E6B7A", "#7A5B2E", "#3F5B4E", "#5A4A7A", "#6B4A3E", "#2E5A5A", "#4A6B2E", "#7A4A5A", "#5A6B3E"];
 
 export default function TeamsPage() {
-  useEffect(() => { document.title = "الفرق — معالي أبها"; }, []);
+  useEffect(() => { document.title = "الفرق — معالي محافظة بلّسمر"; }, []);
   const { teams, students, supervisors, addTeam } = useStore();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -30,7 +30,7 @@ export default function TeamsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1180px] px-6 py-8">
+    <div className="page-shell">
       <PageHeader
         eyebrow={`الفرق · ${teams.length} فريقاً`}
         title="الفرق"
@@ -52,7 +52,7 @@ export default function TeamsPage() {
             >
               <span className="absolute inset-y-0 right-0 w-1" style={{ background: t.color }} />
               <div className="flex items-start gap-3">
-                <TeamBadge letters={t.badge} color={t.color} size={44} />
+                <TeamBadge letters={t.badge} color={t.color} size={44} image={t.imageDataUrl} />
                 <div className="min-w-0 flex-1">
                   <h3 className="text-[16.5px] font-semibold text-text group-hover:text-accent">فريق {t.name}</h3>
                   <p className="mt-0.5 text-[12px] text-text-3">مشرف: {sup?.name ?? "—"}</p>

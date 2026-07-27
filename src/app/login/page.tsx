@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Logo } from "@/components/Logo";
 import { LoginPanel } from "./LoginPanel";
 
-export const metadata = { title: "تسجيل الدخول — معالي أبها ١٤٤٨هـ" };
+export const metadata = { title: "تسجيل الدخول — معالي محافظة بلّسمر ١٤٤٨هـ" };
 
 export default function LoginPage() {
   return (
@@ -12,7 +12,7 @@ export default function LoginPage() {
         className="relative hidden overflow-hidden border-l border-line lg:block"
         style={{
           background:
-            "radial-gradient(ellipse 80% 60% at 50% -10%, rgba(184,149,90,.22) 0%, transparent 55%), linear-gradient(180deg, var(--bg-raised) 0%, var(--bg) 100%)",
+            "radial-gradient(ellipse 80% 60% at 50% -10%, rgba(194,160,99,.22) 0%, transparent 55%), linear-gradient(180deg, var(--bg-raised) 0%, var(--bg) 100%)",
         }}
       >
         <div className="relative flex h-full flex-col justify-between p-12">
@@ -36,7 +36,7 @@ export default function LoginPage() {
           </div>
 
           <div className="flex items-baseline justify-between text-[12px] text-text-3">
-            <span>أبها · ١٤٤٨هـ</span>
+            <span>محافظة بلّسمر · ١٤٤٨هـ</span>
             <span className="disp text-accent">منصّةُ معالي</span>
           </div>
         </div>

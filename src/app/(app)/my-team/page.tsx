@@ -29,7 +29,7 @@ export default function MyTeamPage() {
     else if (session.role === "PRINCE" || session.role === "DEPUTY_PRINCE") router.replace("/dashboard");
     else if (session.role === "BENEFICIARY") router.replace("/me");
   }, [ready, session, router]);
-  useEffect(() => { document.title = "فريقي — معالي أبها"; }, []);
+  useEffect(() => { document.title = "فريقي — معالي محافظة بلّسمر"; }, []);
 
   if (!hydrated || !ready || !session || session.role !== "SUPERVISOR") return null;
 
@@ -63,7 +63,7 @@ export default function MyTeamPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1180px] px-6 py-8">
+    <div className="page-shell">
       <PageHeader
         eyebrow="فريقي · نطاقُ المشرف"
         title={`فريق ${team.name}`}

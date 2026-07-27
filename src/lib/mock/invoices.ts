@@ -2,7 +2,7 @@ import type { Invoice } from "./types";
 
 export const invoices: Invoice[] = [
   { id: "inv001", code: "INV-1448-001", vendor: "مطاعم الكرم للحفلات",     purpose: "وجبات الإفطار — اليوم الأوّل", scope: { kind: "committee", committeeId: "c3" }, amount: 12800, vat: 15, date: "1448-07-21", status: "paid",    extractedByAI: true  },
-  { id: "inv002", code: "INV-1448-002", vendor: "شركة العالميّة للنقل",     purpose: "نقلٌ من الرياض إلى أبها",       scope: { kind: "event" },                        amount: 34500, vat: 15, date: "1448-07-21", status: "paid",    extractedByAI: true  },
+  { id: "inv002", code: "INV-1448-002", vendor: "شركة العالميّة للنقل",     purpose: "نقلٌ من الرياض إلى محافظة بلّسمر",       scope: { kind: "event" },                        amount: 34500, vat: 15, date: "1448-07-21", status: "paid",    extractedByAI: true  },
   { id: "inv003", code: "INV-1448-003", vendor: "مؤسّسة الأفق للطباعة",      purpose: "طباعة كتيّبات البرنامج",         scope: { kind: "event" },                        amount:  4200, vat: 15, date: "1448-07-21", status: "paid",    extractedByAI: false },
   { id: "inv004", code: "INV-1448-004", vendor: "متجر النَّجم للهدايا",       purpose: "هدايا فريق المرتفعات",           scope: { kind: "team", teamId: "t1" },           amount:  3600, vat: 15, date: "1448-07-22", status: "paid",    extractedByAI: true  },
   { id: "inv005", code: "INV-1448-005", vendor: "مطاعم الكرم للحفلات",      purpose: "وجبات العشاء — اليوم الثاني",   scope: { kind: "committee", committeeId: "c3" }, amount: 11400, vat: 15, date: "1448-07-22", status: "paid",    extractedByAI: true  },

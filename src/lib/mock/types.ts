@@ -11,6 +11,7 @@ export type Team = {
   studentCount: number;
   points: number;
   tagline: string;
+  imageDataUrl?: string;             // شعار/صورة مخصَّصة (base64) — يُشتقّ منها اللون تلقائياً
 };
 
 export type Committee = {
@@ -19,6 +20,7 @@ export type Committee = {
   supervisorIds: string[];
   description: string;
   color: string;
+  imageDataUrl?: string;             // صورة مخصَّصة (base64) — يُشتقّ منها اللون تلقائياً
 };
 
 export type Supervisor = {
@@ -27,9 +29,22 @@ export type Supervisor = {
   nationalIdMasked: string;
   phone: string;
   email: string;
+  accessCode?: string;               // رمز دخول المشرف — يظهر للأمير
   teamIds: string[];
   committeeIds: string[];
+  permissions: string[];             // البند ١٨: صلاحيات دقيقة يمنحها الأمير لكلّ مشرف
 };
+
+/** البند ١٨: كتالوج الصلاحيات الدقيقة الممنوحة للمشرفين.
+ *  كلّ صلاحيةٍ تفتح للمشرف قسماً إدارياً إضافياً في القائمة الجانبيّة. */
+export const SUPERVISOR_PERMISSIONS = [
+  { key: "invoices",   label: "إضافة الفواتير", href: "/invoices" },
+  { key: "students",   label: "إدارة الشباب",    href: "/students" },
+  { key: "teams",      label: "إدارة الفرق",     href: "/teams" },
+  { key: "committees", label: "إدارة اللجان",    href: "/committees" },
+] as const;
+
+export type SupervisorPermission = (typeof SUPERVISOR_PERMISSIONS)[number]["key"];
 
 export type Student = {
   id: string;
@@ -50,6 +65,10 @@ export type Student = {
   registeredAt?: string;             // ISO date, for waitlist ordering
   photoDataUrl?: string;             // base64 data URL, uploaded after first login
   accessCode?: string;               // hashed access code sent via WhatsApp
+  receiptDataUrl?: string;           // إيصال السداد المرفوع (base64) — بانتظار اعتماد الأمير
+  receiptStatus?: "PENDING" | "APPROVED" | "REJECTED"; // حالة مراجعة الإيصال
+  receiptAmount?: number;            // المبلغ المُصرَّح به في الإيصال
+  receiptSubmittedAt?: string;       // ISO date لرفع الإيصال
 };
 
 export type Invoice = {

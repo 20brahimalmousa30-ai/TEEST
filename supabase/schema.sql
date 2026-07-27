@@ -278,3 +278,97 @@ begin
   return promoted > 0;
 end;
 $$;
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  ترحيل المرحلتين ج ود (إضافي — آمنٌ لإعادة التشغيل)
+-- ═══════════════════════════════════════════════════════════════════════
+
+-- البند ٢٠: جُمل تحفيزيّة قابلة للتعديل من الأمير (تُخزَّن كمصفوفة JSON).
+alter table app_settings add column if not exists motivations    jsonb;
+alter table app_settings add column if not exists ticker_phrases jsonb;
+
+-- البند ١٠: سداد الرسوم برفع إيصالٍ ثم اعتماد الأمير.
+alter table students add column if not exists receipt_data_url     text;
+alter table students add column if not exists receipt_status       text;   -- PENDING | APPROVED | REJECTED
+alter table students add column if not exists receipt_amount       numeric;
+alter table students add column if not exists receipt_submitted_at timestamptz;
+
+-- البندان ١٧ و١٨: صورةٌ مخصَّصة للفريق/اللجنة (يُشتقّ منها اللون تلقائياً).
+alter table teams      add column if not exists image_data_url text;
+alter table committees add column if not exists image_data_url text;
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  توليد رمز الدخول تلقائياً عند إضافة مشرف أو اعتماد طالب (يظهر للأمير)
+-- ═══════════════════════════════════════════════════════════════════════
+
+-- رمز دخول المشرف يظهر صريحاً للأمير (كرمز الطالب في students.access_code).
+alter table supervisors add column if not exists access_code text;
+
+-- البند ١٨: صلاحيات دقيقة لكلّ مشرف (أقسام إداريّة إضافيّة يفتحها الأمير).
+alter table supervisors add column if not exists permissions text[] not null default '{}';
+
+-- يوفّر (أو يُحدّث) حساب دخولٍ لمشرفٍ/مستفيدٍ برمزٍ مُشفَّر (bcrypt).
+-- عند تكرار الجوّال يُحدَّث الرمز والربط — لكن لا يمسّ حسابات الأمراء إطلاقاً.
+create or replace function upsert_login(
+  p_id text, p_phone text, p_code text, p_name text, p_role text,
+  p_supervisor_id text, p_student_id text, p_landing text
+) returns void
+language sql
+as $$
+  insert into profiles (id, phone, code_hash, name, role, is_owner, supervisor_id, student_id, landing)
+  values (p_id, p_phone, crypt(p_code, gen_salt('bf')), p_name, p_role, false,
+          nullif(p_supervisor_id, ''), nullif(p_student_id, ''), p_landing)
+  on conflict (phone) do update
+    set code_hash     = excluded.code_hash,
+        name          = excluded.name,
+        role          = excluded.role,
+        supervisor_id = excluded.supervisor_id,
+        student_id    = excluded.student_id,
+        landing       = excluded.landing
+    where profiles.is_owner = false
+      and profiles.role not in ('PRINCE', 'DEPUTY_PRINCE');
+$$;
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  ترحيل «تعديل ٥» — محتوى الصفحة الرئيسة وحقول التسجيل (آمنٌ لإعادة التشغيل)
+-- ═══════════════════════════════════════════════════════════════════════
+
+-- البند ٦: رسالة السفرة (تُعرض في الصفحة الرئيسة، يُحرّرها الأمير).
+alter table app_settings add column if not exists trip_message text;
+
+-- البند ٨: وضعٌ رابعٌ للشعار «متحرك» (ANIMATED) — توسيع قيد logo_display_mode.
+do $$
+begin
+  alter table app_settings drop constraint if exists app_settings_logo_display_mode_check;
+  alter table app_settings add constraint app_settings_logo_display_mode_check
+    check (logo_display_mode in ('VISIBLE','BLURRED','HIDDEN','ANIMATED'));
+end $$;
+
+-- البنود ٩–١٣: تعديل حقول نموذج التسجيل على القواعد القائمة (بجانب البذرة أعلاه).
+delete from reg_fields where key = 'emergN';                                    -- ٩: حذف «اسم جهة الطوارئ»
+update reg_fields set label = 'رقم وليّ الأمر',
+                      descr = 'متاح ٢٤ ساعة أثناء الرحلة.'   where key = 'emergP';  -- ١٠
+update reg_fields set label = 'الفريق',
+                      descr = 'الريادة/القيادة/العلو — لتوزيعٍ مبدئي.' where key = 'section'; -- ١١
+update reg_fields set label = 'مقترحك للسفرة',
+                      descr = 'ملاحظاتك واقتراحاتك للرحلة (اختياري).',
+                      type  = 'نص طويل', required = false        where key = 'health';  -- ١٣
+-- البند ١٢: «رقم الهوية» (nid) موجودٌ أصلاً في البذرة.
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  ترحيل «تعديل الهبوط» — شعارٌ متحرّك افتراضاً + رفع شعارٍ مخصّص + ألوان الهوية
+-- ═══════════════════════════════════════════════════════════════════════
+
+-- (٣) جعل الوضع «المتحرك» هو الافتراضي، وتطبيقه على السطر الحاليّ.
+alter table app_settings alter column logo_display_mode set default 'ANIMATED';
+update app_settings set logo_display_mode = 'ANIMATED' where id = 1 and logo_display_mode = 'VISIBLE';
+
+-- (٦) شعارٌ مخصّص يرفعه الأمير (Data URL) + ألوان الهوية المشتقّة منه.
+alter table app_settings add column if not exists logo_url          text;
+alter table app_settings add column if not exists brand_accent      text;
+alter table app_settings add column if not exists brand_accent_warm text;
+
+-- جُملٌ تحفيزيّة متحرّكة في خلفيّة كل صفحة، يُحرّرها الأمير (إضافة/تعديل/حذف)
+-- ويختار نمط الحركة لكلّ صفحة. تُخزَّن كخريطة JSON:
+--   { "<pageKey>": { "phrases": ["..."], "style": "slide|float|fade", "enabled": true } }
+alter table app_settings add column if not exists page_marquees jsonb;

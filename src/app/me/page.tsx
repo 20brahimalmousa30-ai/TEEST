@@ -10,16 +10,19 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { useSession, clearSession, announceSessionChange } from "@/lib/auth/session";
 import { useStore } from "@/lib/store/StoreProvider";
-
-const sar = (n: number) => new Intl.NumberFormat("ar-SA-u-nu-latn").format(n);
+import { sar } from "@/lib/format";
 
 export default function MePage() {
   const { session, ready } = useSession();
   const router = useRouter();
-  const { students, teams, setPayment, setStudentPhoto } = useStore();
+  const { students, teams, submitReceipt, setStudentPhoto } = useStore();
   const [payOpen, setPayOpen] = useState(false);
   const [photoErr, setPhotoErr] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const receiptRef = useRef<HTMLInputElement | null>(null);
+  const [receiptErr, setReceiptErr] = useState("");
+  const [receiptDraft, setReceiptDraft] = useState<string>("");
+  const [receiptAmount, setReceiptAmount] = useState<string>("");
 
   function onPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -33,6 +36,26 @@ export default function MePage() {
     reader.readAsDataURL(file);
   }
 
+  function onReceiptFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setReceiptErr("الإيصال يجب أن يكون صورة."); return; }
+    if (file.size > 5 * 1024 * 1024) { setReceiptErr("الحدّ الأقصى ٥ ميغابايت."); return; }
+    setReceiptErr("");
+    const reader = new FileReader();
+    reader.onload = () => setReceiptDraft(String(reader.result));
+    reader.readAsDataURL(file);
+  }
+
+  function sendReceipt() {
+    if (!student || !receiptDraft) { setReceiptErr("أرفِق صورة الإيصال أولاً."); return; }
+    const amount = Number(receiptAmount) || (student.totalAmount - student.paidAmount);
+    submitReceipt(student.id, receiptDraft, amount);
+    setReceiptDraft(""); setReceiptAmount(""); setReceiptErr("");
+    setPayOpen(false);
+  }
+
   useEffect(() => {
     if (!ready) return;
     if (!session) { router.replace("/login"); return; }
@@ -40,7 +63,7 @@ export default function MePage() {
   }, [ready, session, router]);
 
   const student = session?.studentId ? students.find(s => s.id === session.studentId) : null;
-  useEffect(() => { document.title = student ? `${student.name.split(" ")[0]} — معالي` : "معالي أبها"; }, [student]);
+  useEffect(() => { document.title = student ? `${student.name.split(" ")[0]} — معالي` : "معالي محافظة بلّسمر"; }, [student]);
 
   if (!ready || !student) {
     return (
@@ -133,10 +156,19 @@ export default function MePage() {
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-alt/40">
               <div className="h-full transition-[width] duration-500" style={{ width: `${paidPct}%`, background: student.paymentStatus === "PAID" ? "var(--ok)" : "var(--accent-warm)" }} />
             </div>
-            {student.paymentStatus !== "PAID" && (
-              <Button className="mt-5 w-full" onClick={() => setPayOpen(true)}>
-                سدِّد الباقي {sar(student.totalAmount - student.paidAmount)} SAR
-              </Button>
+            {student.receiptStatus === "PENDING" ? (
+              <div className="mt-5 rounded border border-accent-warm/40 bg-accent-warm/10 px-3 py-2.5 text-[12.5px] text-accent-warm-2">
+                إيصالك قيد المراجعة من الأمير — ستُحدَّث حالتك بعد الاعتماد.
+              </div>
+            ) : student.paymentStatus !== "PAID" && (
+              <>
+                {student.receiptStatus === "REJECTED" && (
+                  <p className="mt-4 text-[12.5px] text-critical">تعذّر اعتماد إيصالك السابق — يُرجى رفع إيصالٍ صحيح.</p>
+                )}
+                <Button className="mt-5 w-full" onClick={() => setPayOpen(true)}>
+                  رفع إيصال السداد ({sar(student.totalAmount - student.paidAmount)} SAR)
+                </Button>
+              </>
             )}
           </Card>
 
@@ -160,30 +192,51 @@ export default function MePage() {
         </div>
 
         <p className="mt-10 text-center text-[12.5px] text-text-3">
-          <Link href="/login" className="hover:text-accent">← بدّل الحساب</Link>
+          <Link href="/login" className="hover:text-accent">بدّل الحساب →</Link>
         </p>
       </div>
 
       <Modal
         open={payOpen}
-        onClose={() => setPayOpen(false)}
-        title="بوّابة السداد"
-        subtitle="في النسخة الفعلية ستُفتح بوّابة دفعٍ إلكتروني. في النسخة التجريبية اضغط تأكيد لاعتماد السداد."
+        onClose={() => { setPayOpen(false); setReceiptDraft(""); setReceiptErr(""); }}
+        title="رفع إيصال السداد"
+        subtitle="حوّل المبلغ إلى حساب الرحلة، ثم أرفِق صورةً واضحة للإيصال — يعتمدها الأمير ثم تُحدَّث حالتك."
         size="sm"
         footer={
           <>
-            <Button variant="outline" onClick={() => setPayOpen(false)}>إلغاء</Button>
-            <Button onClick={() => { setPayment(student.id, "PAID", student.totalAmount); setPayOpen(false); }}>
-              تأكيد سداد {sar(student.totalAmount - student.paidAmount)} SAR
-            </Button>
+            <Button variant="outline" onClick={() => { setPayOpen(false); setReceiptDraft(""); setReceiptErr(""); }}>إلغاء</Button>
+            <Button onClick={sendReceipt} disabled={!receiptDraft}>إرسال للمراجعة</Button>
           </>
         }
       >
-        <div className="grid gap-3 text-[13.5px] text-text-2">
-          <div className="flex justify-between border-b border-line pb-2"><span>الرحلة</span><span className="text-text">معالي أبها ١٤٤٨هـ</span></div>
+        <div className="grid gap-4 text-[13.5px] text-text-2">
           <div className="flex justify-between border-b border-line pb-2"><span>الطالب</span><span className="text-text">{student.name}</span></div>
           <div className="flex justify-between border-b border-line pb-2"><span>المسدَّد سابقاً</span><span className="num text-text">{sar(student.paidAmount)}</span></div>
           <div className="flex justify-between text-[15px] font-semibold"><span>المبلغ المتبقّي</span><span className="num text-accent">{sar(student.totalAmount - student.paidAmount)} SAR</span></div>
+
+          <label className="block">
+            <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">المبلغ المُحوَّل (SAR)</span>
+            <input
+              type="text" inputMode="numeric" value={receiptAmount}
+              onChange={e => setReceiptAmount(e.target.value.replace(/[^\d]/g, ""))}
+              placeholder={String(student.totalAmount - student.paidAmount)}
+              className="num w-full rounded border border-line-strong bg-surface px-3 py-2 text-[14px]"
+            />
+          </label>
+
+          <div>
+            <input ref={receiptRef} type="file" accept="image/*" onChange={onReceiptFile} className="hidden" />
+            {receiptDraft ? (
+              <div className="flex items-center gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={receiptDraft} alt="معاينة الإيصال" className="h-20 w-20 rounded border border-line object-cover" />
+                <Button variant="outline" onClick={() => receiptRef.current?.click()}>تغيير الصورة</Button>
+              </div>
+            ) : (
+              <Button variant="outline" className="w-full" onClick={() => receiptRef.current?.click()}>أرفِق صورة الإيصال</Button>
+            )}
+            {receiptErr && <p className="mt-2 text-[12px] text-critical">{receiptErr}</p>}
+          </div>
         </div>
       </Modal>
     </main>

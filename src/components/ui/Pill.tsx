@@ -2,9 +2,9 @@ type Variant = "ok" | "warn" | "critical" | "info" | "neutral";
 
 const styles: Record<Variant, string> = {
   ok:       "bg-[rgba(95,138,92,.12)]  text-ok        border-[rgba(95,138,92,.35)]",
-  warn:     "bg-[rgba(184,149,90,.14)] text-accent-warm-2 border-[rgba(184,149,90,.40)]",
+  warn:     "bg-[rgba(194,160,99,.14)] text-accent-warm-2 border-[rgba(194,160,99,.40)]",
   critical: "bg-[rgba(181,74,46,.12)]  text-critical  border-[rgba(181,74,46,.35)]",
-  info:     "bg-[rgba(30,70,53,.10)]   text-accent    border-[rgba(30,70,53,.30)]",
+  info:     "bg-[rgba(44,107,121,.10)]   text-accent    border-[rgba(44,107,121,.30)]",
   neutral:  "bg-surface-alt/40         text-text-2    border-line-strong",
 };
 

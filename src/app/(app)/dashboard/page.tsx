@@ -7,11 +7,10 @@ import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { TeamBadge } from "@/components/ui/TeamBadge";
 import { useStore } from "@/lib/store/StoreProvider";
-
-const sar = (n: number) => new Intl.NumberFormat("ar-SA-u-nu-latn").format(n);
+import { sar } from "@/lib/format";
 
 export default function DashboardPage() {
-  useEffect(() => { document.title = "لوحة الأمير — معالي أبها"; }, []);
+  useEffect(() => { document.title = "لوحة الأمير — معالي محافظة بلّسمر"; }, []);
   const { teams, students, supervisors, invoices } = useStore();
 
   const summary = useMemo(() => ({
@@ -33,7 +32,7 @@ export default function DashboardPage() {
   const collectedPct = summary.target ? Math.round((summary.collected / summary.target) * 100) : 0;
 
   return (
-    <div className="mx-auto max-w-[1180px] px-6 py-8">
+    <div className="page-shell">
       <PageHeader
         eyebrow="لوحة الأمير · نظرةٌ عامّة"
         title="نظرةٌ عامّة على الرحلة"
@@ -58,7 +57,7 @@ export default function DashboardPage() {
                 const paid = roster.filter(s => s.paymentStatus === "PAID").length;
                 const pct = roster.length ? Math.round((paid / roster.length) * 100) : 0;
                 return (
-                  <li key={t.id} className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-4 border-b border-line px-5 py-3 last:border-b-0">
+                  <li key={t.id} className="border-b border-line px-5 py-3 last:border-b-0" style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", alignItems: "center", gap: "1rem" }}>
                     <TeamBadge letters={t.badge} color={t.color} />
                     <div>
                       <div className="text-[14.5px] font-medium text-text">
@@ -83,7 +82,7 @@ export default function DashboardPage() {
           <Card title="آخر الفواتير" action={<Link href="/invoices" className="text-[13px] text-accent hover:underline">الكلّ ←</Link>} padded={false}>
             <ul>
               {recentInvoices.map(inv => (
-                <li key={inv.id} className="grid grid-cols-[1fr_auto] items-baseline gap-2 border-b border-line px-5 py-3 last:border-b-0">
+                <li key={inv.id} className="border-b border-line px-5 py-3 last:border-b-0" style={{ display: "grid", gridTemplateColumns: "1fr auto", alignItems: "baseline", gap: "0.5rem" }}>
                   <div>
                     <div className="text-[13.5px] text-text">
                       <Link href={`/invoices/${inv.id}`} className="hover:text-accent">{inv.vendor}</Link>

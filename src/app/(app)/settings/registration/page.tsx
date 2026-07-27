@@ -8,16 +8,11 @@ import { Button } from "@/components/ui/Button";
 import { Modal, Confirm } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Field";
 import { useStore } from "@/lib/store/StoreProvider";
-import type { LogoDisplayMode } from "@/lib/store/StoreProvider";
 import { copyText } from "@/lib/download";
-import { useSession } from "@/lib/auth/session";
-import { Logo } from "@/components/Logo";
 
 export default function RegistrationSettingsPage() {
-  useEffect(() => { document.title = "إعدادات نموذج التسجيل — معالي أبها"; }, []);
-  const { regFields, regOpen, students, toggleRegField, reorderRegField, addRegField, removeRegField, setRegOpen, logoDisplayMode, setLogoDisplayMode } = useStore();
-  const { session } = useSession();
-  const canControlLogo = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
+  useEffect(() => { document.title = "إعدادات نموذج التسجيل — معالي محافظة بلّسمر"; }, []);
+  const { regFields, regOpen, students, toggleRegField, reorderRegField, addRegField, updateRegField, removeRegField, setRegOpen } = useStore();
   const [addOpen, setAddOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState("");
@@ -25,13 +20,15 @@ export default function RegistrationSettingsPage() {
   const [confirmClose, setConfirmClose] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [nf, setNf] = useState({ key: "", label: "", type: "نص", required: false, desc: "" });
+  const [editKey, setEditKey] = useState<string | null>(null);
+  const [ef, setEf] = useState({ label: "", type: "نص", required: false, desc: "" });
 
   const link = typeof window !== "undefined" ? `${window.location.origin}/register/1448` : "maali.abha/register/1448";
 
   // Generate a real, scannable QR (PNG data URL) whenever the modal opens.
   useEffect(() => {
     if (!qrOpen) return;
-    QRCode.toDataURL(link, { width: 512, margin: 2, color: { dark: "#1E4635", light: "#FFFFFF" } })
+    QRCode.toDataURL(link, { width: 512, margin: 2, color: { dark: "#2C6B79", light: "#FFFFFF" } })
       .then(setQrDataUrl)
       .catch(() => setQrDataUrl(""));
   }, [qrOpen, link]);
@@ -57,12 +54,23 @@ export default function RegistrationSettingsPage() {
     setAddOpen(false);
   }
 
+  function openEdit(f: typeof regFields[number]) {
+    setEditKey(f.key);
+    setEf({ label: f.label, type: f.type, required: f.required, desc: f.desc });
+  }
+  function submitEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editKey || !ef.label.trim()) return;
+    updateRegField(editKey, { label: ef.label.trim(), type: ef.type, required: ef.required, desc: ef.desc.trim() });
+    setEditKey(null);
+  }
+
   const registered = students.length;
   const target = 450;
   const pctFilled = Math.round((registered / target) * 100);
 
   return (
-    <div className="mx-auto max-w-[1180px] px-6 py-8">
+    <div className="page-shell">
       <PageHeader
         eyebrow="نموذج التسجيل الديناميكي"
         title="نموذج التسجيل الديناميكي"
@@ -87,6 +95,7 @@ export default function RegistrationSettingsPage() {
                 <span className="text-[12px] text-text-2">{f.type}</span>
                 <Pill variant={f.required ? "critical" : "neutral"}>{f.required ? "إلزامي" : "اختياري"}</Pill>
                 <div className="flex items-center gap-1 text-text-3">
+                  <button onClick={() => openEdit(f)} className="me-1 text-[11.5px] text-accent hover:underline" aria-label="تعديل">تعديل</button>
                   <button onClick={() => reorderRegField(f.key, "up")}   disabled={i === 0} className="disabled:opacity-30 hover:text-text" aria-label="أعلى">↑</button>
                   <button onClick={() => reorderRegField(f.key, "down")} disabled={i === regFields.length - 1} className="disabled:opacity-30 hover:text-text" aria-label="أسفل">↓</button>
                   {f.key.startsWith("custom_") && (
@@ -102,44 +111,6 @@ export default function RegistrationSettingsPage() {
         </Card>
 
         <div className="flex flex-col gap-6">
-          {canControlLogo && (
-            <Card title="التحكّم بشعار الموقع">
-              <div className="mb-4 flex items-center gap-4">
-                <div className="grid h-16 w-16 place-items-center rounded border border-line bg-bg-raised">
-                  {logoDisplayMode === "HIDDEN"
-                    ? <span className="text-[11px] text-text-3">مُخفى</span>
-                    : <Logo size={52} />}
-                </div>
-                <p className="flex-1 text-[12.5px] leading-[1.8] text-text-2">
-                  يُطبَّق فوراً على كامل الموقع — الهيدر، الصفحة الرئيسة، صفحة الدخول، وكلّ موضعٍ يظهر فيه الشعار.
-                </p>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {([
-                  ["VISIBLE", "إظهار", "الوضع الافتراضي"],
-                  ["BLURRED", "تغبيش", "ضبابيٌّ مؤقت"],
-                  ["HIDDEN",  "إخفاء", "لا يظهر إطلاقاً"],
-                ] as [LogoDisplayMode, string, string][]).map(([mode, label, hint]) => {
-                  const active = logoDisplayMode === mode;
-                  return (
-                    <button
-                      key={mode}
-                      onClick={() => setLogoDisplayMode(mode)}
-                      className={`rounded border px-2 py-2.5 text-center transition-colors ${
-                        active
-                          ? "border-accent bg-accent text-[#F4EEE2]"
-                          : "border-line-strong text-text-2 hover:border-accent hover:text-text"
-                      }`}
-                    >
-                      <span className="block text-[13px] font-medium">{label}</span>
-                      <span className={`mt-0.5 block text-[10.5px] ${active ? "opacity-85" : "text-text-3"}`}>{hint}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </Card>
-          )}
-
           <Card title="رابط التسجيل العامّ">
             <div className="rounded border border-line bg-bg-raised px-3 py-2 text-[12.5px]">
               <span className="lat text-accent break-all">{link}</span>
@@ -160,7 +131,7 @@ export default function RegistrationSettingsPage() {
 
           <Card title="معاينةٌ حيّة">
             <div className="rounded border border-line bg-bg-raised p-4">
-              <div className="mb-3 text-[13px] font-semibold text-text">تسجيل رحلة معالي أبها ١٤٤٨هـ</div>
+              <div className="mb-3 text-[13px] font-semibold text-text">تسجيل رحلة معالي محافظة بلّسمر ١٤٤٨هـ</div>
               <div className="grid gap-3">
                 {regFields.filter(f => f.active).slice(0, 6).map(f => (
                   <div key={f.key}>
@@ -217,6 +188,36 @@ export default function RegistrationSettingsPage() {
             </label>
           </div>
           <Field label="وصف قصير (اختياري)" value={nf.desc} onChange={e => setNf({ ...nf, desc: e.target.value })} />
+        </form>
+      </Modal>
+
+      {/* Edit field */}
+      <Modal
+        open={editKey !== null}
+        onClose={() => setEditKey(null)}
+        title="تعديل الحقل"
+        footer={
+          <>
+            <Button variant="outline" type="button" onClick={() => setEditKey(null)}>إلغاء</Button>
+            <Button type="submit" form="edit-field">حفظ التعديل</Button>
+          </>
+        }
+      >
+        <form id="edit-field" onSubmit={submitEdit} className="grid gap-4">
+          <Field label="عنوان الحقل" value={ef.label} onChange={e => setEf({ ...ef, label: e.target.value })} required />
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">النوع</span>
+              <select value={ef.type} onChange={e => setEf({ ...ef, type: e.target.value })} className="w-full rounded border border-line-strong bg-surface px-3 py-2 text-[14px]">
+                <option>نص</option><option>نص طويل</option><option>رقم</option><option>هاتف</option><option>ملف</option><option>قائمة</option><option>تاريخ</option>
+              </select>
+            </label>
+            <label className="flex items-end gap-2 pb-2 text-[13px]">
+              <input type="checkbox" checked={ef.required} onChange={e => setEf({ ...ef, required: e.target.checked })} className="accent-[color:var(--accent)]" />
+              <span className="text-text-2">حقلٌ إلزامي</span>
+            </label>
+          </div>
+          <Field label="وصف قصير (اختياري)" value={ef.desc} onChange={e => setEf({ ...ef, desc: e.target.value })} />
         </form>
       </Modal>
 

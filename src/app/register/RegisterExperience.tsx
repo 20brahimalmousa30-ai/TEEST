@@ -2,35 +2,21 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Logo } from "@/components/Logo";
+import { Confetti } from "@/components/Confetti";
 import { Field, TextArea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { useStore } from "@/lib/store/StoreProvider";
 import type { RegField } from "@/lib/store/StoreProvider";
-import { motivations, tickerPhrases } from "@/lib/motivations";
 
 const grades = ["الأول ثانوي", "الثاني ثانوي", "الثالث ثانوي"];
 const sections = ["ريادة", "علو", "قيادة"] as const;
-
-/** Reduced-motion probe: skip heavy animation for users who opt-out or low-end devices. */
-function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const m = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(m.matches);
-    const onChange = (e: MediaQueryListEvent) => setReduced(e.matches);
-    m.addEventListener("change", onChange);
-    return () => m.removeEventListener("change", onChange);
-  }, []);
-  return reduced;
-}
 
 /** The public registration experience — rendered dynamically from the
  *  Prince-controlled `regFields`, so enabling/disabling/reordering a field
  *  in settings is reflected here immediately. Reused by both `/register`
  *  and the vanity link `/register/[code]`. */
 export function RegisterExperience() {
-  const { registerStudent, regFields, regOpen, students } = useStore();
-  const reduced = usePrefersReducedMotion();
+  const { registerStudent, regFields, regOpen, motivations } = useStore();
 
   // Only the active fields, in their configured order.
   const activeFields = useMemo(() => regFields.filter(f => f.active), [regFields]);
@@ -47,15 +33,15 @@ export function RegisterExperience() {
 
   // Rotate motivations after submission
   useEffect(() => {
-    if (!submitted) return;
+    if (!submitted || motivations.length === 0) return;
     timerRef.current = setInterval(() => setMotivIdx(i => (i + 1) % motivations.length), 3500);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [submitted]);
+  }, [submitted, motivations.length]);
 
   const bannerBg = useMemo(() => ({
     background:
-      "radial-gradient(ellipse 60% 50% at 50% 0%, rgba(184,149,90,.20) 0%, transparent 60%), " +
-      "radial-gradient(ellipse 90% 60% at 50% 110%, rgba(30,70,53,.14) 0%, transparent 60%)",
+      "radial-gradient(ellipse 60% 50% at 50% 0%, rgba(194,160,99,.20) 0%, transparent 60%), " +
+      "radial-gradient(ellipse 90% 60% at 50% 110%, rgba(44,107,121,.14) 0%, transparent 60%)",
   }), []);
 
   function submit(e: React.FormEvent) {
@@ -87,9 +73,9 @@ export function RegisterExperience() {
   /* ---------- Registration closed ---------- */
   if (!regOpen) {
     return (
-      <main className="relative grid min-h-screen place-items-center overflow-hidden px-6 py-12">
+      <main className="relative overflow-hidden px-6 py-12" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
         <div aria-hidden className="pointer-events-none absolute inset-0 -z-10" style={bannerBg} />
-        <div className="w-full max-w-lg text-center">
+        <div className="w-full max-w-lg" style={{ textAlign: "center" }}>
           <Logo size={84} priority />
           <div className="mt-6 mb-3 flex items-center justify-center gap-3">
             <span className="h-px w-8 bg-accent-warm" />
@@ -114,17 +100,11 @@ export function RegisterExperience() {
   /* ---------- Post-submission motivational screen ---------- */
   if (submitted) {
     return (
-      <main className="relative grid min-h-screen place-items-center overflow-hidden px-6 py-12">
+      <main className="relative overflow-hidden px-6 py-12" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <Confetti />
         <div aria-hidden className="pointer-events-none absolute inset-0 -z-10" style={bannerBg} />
-        {!reduced && (
-          <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden opacity-[.18]">
-            <div className="stripe stripe-a" />
-            <div className="stripe stripe-b" />
-            <div className="stripe stripe-c" />
-          </div>
-        )}
 
-        <div className="w-full max-w-2xl text-center">
+        <div className="w-full max-w-2xl" style={{ textAlign: "center" }}>
           <Logo size={92} priority />
           <div className="mt-6 mb-3 flex items-center justify-center gap-3">
             <span className="h-px w-8 bg-accent-warm" />
@@ -142,10 +122,18 @@ export function RegisterExperience() {
 
           <div className="mt-8 mx-auto max-w-md rounded-md border border-line bg-surface/70 px-5 py-4 text-start text-[13px] text-text-2 backdrop-blur">
             <div className="mb-2 text-[11px] tracking-[.14em] text-text-3">ما التالي؟</div>
-            <ol className="grid gap-2 leading-[1.9]">
+            <ol className="grid gap-3 leading-[1.9]">
               <li>١ · يراجع طلبَك <span className="text-text">الأميرُ</span> أو نائبُه.</li>
-              <li>٢ · عند الاعتماد ستصلك رسالةُ واتساب باسم المستخدم ورمز الدخول.</li>
-              <li>٣ · من صفحتك الشخصيّة سترفع صورتك وتُتمّ السداد.</li>
+              <li>
+                ٢ · لن يُعتمد قبولُك حتى تُسدِّد رسوم السفرة على حساب الجمعيّة:
+                <div className="mt-2 rounded border border-line bg-bg-raised px-3 py-2 text-[12.5px] leading-[2]">
+                  <div>رقم الحساب (IBAN): <span className="num text-accent">SA4480000585608011476325</span></div>
+                  <div>البنك: <span className="text-text">مصرف الراجحي</span></div>
+                  <div>المبلغ: <span className="text-text">٥٠٠ ريال</span></div>
+                  <div>يُرسَل إيصالُ السداد إلى <span className="text-text">رئيس القسم</span>.</div>
+                </div>
+              </li>
+              <li>٣ · عند الاعتماد ستصلك رسالةُ القبول متضمّنةً <span className="text-text">اسم المستخدم وكلمة المرور</span>.</li>
             </ol>
           </div>
 
@@ -159,10 +147,6 @@ export function RegisterExperience() {
         </div>
 
         <style jsx>{`
-          .stripe { position: absolute; inset-inline-start: -20%; width: 140%; height: 8vh; background: linear-gradient(90deg, transparent, var(--accent-warm), transparent); }
-          .stripe-a { top: 18%; animation: sweep 14s ease-in-out infinite; }
-          .stripe-b { top: 48%; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: sweep 18s ease-in-out infinite reverse; }
-          .stripe-c { top: 78%; background: linear-gradient(90deg, transparent, var(--ok), transparent); animation: sweep 22s ease-in-out infinite; }
           .motiv-fade { animation: fade .55s ease; }
           @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
         `}</style>
@@ -175,14 +159,7 @@ export function RegisterExperience() {
     <main className="relative min-h-screen overflow-hidden px-4 py-10 sm:py-14">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-20" style={bannerBg} />
 
-      {!reduced && (
-        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-          <MarqueeBar top="8%"  duration={38} phrases={tickerPhrases} color="warm" />
-          <MarqueeBar top="27%" duration={54} phrases={motivations}   color="green" reverse className="hidden sm:flex" />
-          <MarqueeBar top="63%" duration={30} phrases={tickerPhrases} color="green" className="hidden sm:flex" />
-          <MarqueeBar top="84%" duration={46} phrases={motivations}   color="warm" reverse />
-        </div>
-      )}
+      {/* البند ١٤: أُلغيت الأشرطة النصّيّة المتحرّكة خلف نموذج التسجيل. */}
 
       <div className="relative mx-auto max-w-2xl">
         <div className="text-center">
@@ -194,7 +171,7 @@ export function RegisterExperience() {
           </div>
           <h1 className="text-balance text-[clamp(1.7rem,3.6vw,2.4rem)] font-medium leading-tight"
               style={{ fontFamily: "var(--font-messiri), var(--font-cairo), serif" }}>
-            سجّل رغبتَك بالانضمام إلى <span className="text-accent">معالي أبها ١٤٤٨هـ</span>
+            سجّل رغبتَك بالانضمام إلى <span className="text-accent">محافظة بلّسمر ١٤٤٨هـ</span>
           </h1>
           <p className="mx-auto mt-3 max-w-[52ch] text-[14.5px] text-text-2">
             بياناتك تُحفظ ثم تدخل قائمة الانتظار حتى يعتمدها الأمير — لن تُشارك مع أيّ طرف.
@@ -263,6 +240,10 @@ function DynamicField({ field, value, onChange }: { field: RegField; value: stri
 function SelectField({ label, required, value, onChange, options }: {
   label: string; required: boolean; value: string; onChange: (v: string) => void; options: string[];
 }) {
+  // A native <select> shows its first option by default but never fires onChange,
+  // so the parent's form state stays empty. Seed the default on mount so required
+  // dropdowns (e.g. الصف الدراسي) don't block submission when left unchanged.
+  useEffect(() => { if (!value && options.length) onChange(options[0]); }, []);
   return (
     <label className="block">
       <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">{label}{required && <span className="ms-1 text-critical">*</span>}</span>
@@ -270,23 +251,5 @@ function SelectField({ label, required, value, onChange, options }: {
         {options.map(o => <option key={o}>{o}</option>)}
       </select>
     </label>
-  );
-}
-
-/** One horizontally-scrolling background bar. */
-function MarqueeBar({
-  top, duration, phrases, color, reverse = false, className = "",
-}: {
-  top: string; duration: number; phrases: string[]; color: "warm" | "green"; reverse?: boolean; className?: string;
-}) {
-  const items = [...phrases, ...phrases];
-  return (
-    <div className={`marquee-row ${className}`} style={{ top }}>
-      <div className="marquee-track" style={{ animationDuration: `${duration}s`, animationDirection: reverse ? "reverse" : "normal" }}>
-        {items.map((p, i) => (
-          <span key={i} className={`marquee-item marquee-${color}`}>{p}</span>
-        ))}
-      </div>
-    </div>
   );
 }

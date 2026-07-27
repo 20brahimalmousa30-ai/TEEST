@@ -17,6 +17,7 @@ export const rowToTeam = (r: any): Team => ({
   studentCount: r.student_count ?? 0,
   points: r.points ?? 0,
   tagline: r.tagline ?? "",
+  imageDataUrl: r.image_data_url ?? undefined,
 });
 
 export const teamToRow = (t: Partial<Team>) => ({
@@ -28,6 +29,7 @@ export const teamToRow = (t: Partial<Team>) => ({
   ...(t.studentCount !== undefined && { student_count: t.studentCount }),
   ...(t.points !== undefined && { points: t.points }),
   ...(t.tagline !== undefined && { tagline: t.tagline }),
+  ...(t.imageDataUrl !== undefined && { image_data_url: t.imageDataUrl }),
 });
 
 // supervisorIds لم يعد عموداً — يُشتقّ من supervisor_assignments في loadAllData.
@@ -37,6 +39,7 @@ export const rowToCommittee = (r: any): Committee => ({
   supervisorIds: [],
   description: r.description ?? "",
   color: r.color,
+  imageDataUrl: r.image_data_url ?? undefined,
 });
 
 export const committeeToRow = (c: Partial<Committee>) => ({
@@ -44,6 +47,7 @@ export const committeeToRow = (c: Partial<Committee>) => ({
   ...(c.name !== undefined && { name: c.name }),
   ...(c.description !== undefined && { description: c.description }),
   ...(c.color !== undefined && { color: c.color }),
+  ...(c.imageDataUrl !== undefined && { image_data_url: c.imageDataUrl }),
 });
 
 // teamIds/committeeIds لم تعد أعمدة — تُشتقّ من supervisor_assignments في loadAllData.
@@ -53,8 +57,10 @@ export const rowToSupervisor = (r: any): Supervisor => ({
   nationalIdMasked: r.national_id_masked ?? "",
   phone: r.phone ?? "",
   email: r.email ?? "",
+  accessCode: r.access_code ?? undefined,
   teamIds: [],
   committeeIds: [],
+  permissions: r.permissions ?? [],
 });
 
 export const supervisorToRow = (s: Partial<Supervisor>) => ({
@@ -63,6 +69,8 @@ export const supervisorToRow = (s: Partial<Supervisor>) => ({
   ...(s.nationalIdMasked !== undefined && { national_id_masked: s.nationalIdMasked }),
   ...(s.phone !== undefined && { phone: s.phone }),
   ...(s.email !== undefined && { email: s.email }),
+  ...(s.accessCode !== undefined && { access_code: s.accessCode }),
+  ...(s.permissions !== undefined && { permissions: s.permissions }),
 });
 
 export const rowToStudent = (r: any): Student => ({
@@ -84,6 +92,10 @@ export const rowToStudent = (r: any): Student => ({
   registeredAt: r.registered_at ?? undefined,
   photoDataUrl: r.photo_data_url ?? undefined,
   accessCode: r.access_code ?? undefined,
+  receiptDataUrl: r.receipt_data_url ?? undefined,
+  receiptStatus: r.receipt_status ?? undefined,
+  receiptAmount: r.receipt_amount ?? undefined,
+  receiptSubmittedAt: r.receipt_submitted_at ?? undefined,
 });
 
 export const studentToRow = (s: Partial<Student>) => ({
@@ -105,6 +117,10 @@ export const studentToRow = (s: Partial<Student>) => ({
   ...(s.registeredAt !== undefined && { registered_at: s.registeredAt }),
   ...(s.photoDataUrl !== undefined && { photo_data_url: s.photoDataUrl }),
   ...(s.accessCode !== undefined && { access_code: s.accessCode }),
+  ...(s.receiptDataUrl !== undefined && { receipt_data_url: s.receiptDataUrl }),
+  ...(s.receiptStatus !== undefined && { receipt_status: s.receiptStatus }),
+  ...(s.receiptAmount !== undefined && { receipt_amount: s.receiptAmount }),
+  ...(s.receiptSubmittedAt !== undefined && { receipt_submitted_at: s.receiptSubmittedAt }),
 });
 
 export const rowToInvoice = (r: any): Invoice => ({

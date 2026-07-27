@@ -12,18 +12,18 @@ import { useSession } from "@/lib/auth/session";
 import { useStore } from "@/lib/store/StoreProvider";
 import { downloadCSV } from "@/lib/download";
 import type { PaymentStatus, Student } from "@/lib/mock/types";
+import { sar } from "@/lib/format";
 
 const grades = ["الأول ثانوي", "الثاني ثانوي", "الثالث ثانوي"];
 const sections = ["ريادة", "علو", "قيادة"] as const;
 
-const sar = (n: number) => new Intl.NumberFormat("ar-SA-u-nu-latn").format(n);
 const isApproved = (s: Student) => (s.approvalStatus ?? "APPROVED") === "APPROVED";
 const isWaiting  = (s: Student) => s.approvalStatus === "PENDING";
 
 export default function StudentsPage() {
-  useEffect(() => { document.title = "الشباب — معالي أبها"; }, []);
+  useEffect(() => { document.title = "الشباب — معالي محافظة بلّسمر"; }, []);
   const { session } = useSession();
-  const { students, teams, addStudent, approveStudent, rejectStudent } = useStore();
+  const { students, teams, addStudent, approveStudent, rejectStudent, reviewReceipt } = useStore();
 
   // Only PRINCE / DEPUTY_PRINCE can approve/reject
   const canApprove = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
@@ -34,6 +34,8 @@ export default function StudentsPage() {
   const [openAdd, setOpenAdd] = useState(false);
   const [openWaitlist, setOpenWaitlist] = useState(false);
   const [openUnpaid, setOpenUnpaid] = useState(false);
+  const [openReceipts, setOpenReceipts] = useState(false);
+  const [viewReceipt, setViewReceipt] = useState<Student | null>(null);
   const [approveFor, setApproveFor] = useState<Student | null>(null);
   const [approveTeamId, setApproveTeamId] = useState("");
   const [form, setForm] = useState({
@@ -60,6 +62,11 @@ export default function StudentsPage() {
   const unpaid = useMemo(
     () => approvedAll.filter(s => s.paymentStatus !== "PAID"),
     [approvedAll],
+  );
+  const pendingReceipts = useMemo(
+    () => students.filter(s => s.receiptStatus === "PENDING")
+      .sort((a, b) => (a.receiptSubmittedAt ?? "").localeCompare(b.receiptSubmittedAt ?? "")),
+    [students],
   );
 
   const summary = useMemo(() => ({
@@ -119,7 +126,7 @@ export default function StudentsPage() {
     // Placeholder for real WhatsApp API — opens wa.me pre-filled for the guardian
     const url = typeof window !== "undefined" ? window.location.origin + "/login" : "/login";
     const msg =
-      `أهلاً بك في «معالي أبها ١٤٤٨هـ» 🌿%0A%0A` +
+      `أهلاً بك في «معالي محافظة بلّسمر ١٤٤٨هـ» 🌿%0A%0A` +
       `اسم المستخدم: ${st.phone}%0A` +
       `رمز الدخول: ${st.accessCode ?? "—"}%0A` +
       `رابط الدخول: ${url}%0A%0A` +
@@ -129,7 +136,7 @@ export default function StudentsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1180px] px-6 py-8">
+    <div className="page-shell">
       <PageHeader
         eyebrow="الشباب"
         title="الشباب"
@@ -162,24 +169,32 @@ export default function StudentsPage() {
             {waitlist.length === 0 ? (
               <div className="px-5 py-6 text-center text-[12.5px] text-text-3">لا توجد طلبات انتظار حالياً.</div>
             ) : (
-              <ul className="divide-y divide-line">
+              <div className="grid gap-3 p-4" style={{ fontFamily: "var(--font-cairo), 'IBM Plex Sans Arabic', 'Tajawal', sans-serif" }}>
                 {waitlist.map(s => (
-                  <li key={s.id} className="grid grid-cols-[1fr_auto] items-center gap-3 px-5 py-3">
-                    <div>
-                      <div className="text-[13.5px] text-text">{s.name}</div>
-                      <div className="num text-[11.5px] text-text-3">{s.grade} · {s.section} · {s.phone}</div>
-                    </div>
-                    {canApprove ? (
-                      <div className="flex gap-2 text-[12px]">
-                        <button onClick={() => openApproveDialog(s)} className="rounded border border-ok/40 bg-ok/10 px-3 py-1 text-ok hover:bg-ok/20">اعتماد</button>
-                        <button onClick={() => rejectStudent(s.id)} className="rounded border border-critical/40 bg-critical/10 px-3 py-1 text-critical hover:bg-critical/20">رفض</button>
+                  <div
+                    key={s.id}
+                    className="rounded-lg border border-accent-warm/30 bg-bg-raised p-4 shadow-sm transition-colors hover:border-accent-warm/60"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-[15px] font-bold text-accent">{s.name}</div>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <span className="rounded-full border border-accent/20 bg-accent/10 px-2.5 py-0.5 text-[11.5px] font-medium text-accent">{s.grade}</span>
+                          <span className="rounded-full border border-accent-warm/30 bg-accent-warm/10 px-2.5 py-0.5 text-[11.5px] font-medium text-accent-warm-2">{s.section}</span>
+                          <span className="num rounded-full border border-line-strong bg-surface px-2.5 py-0.5 text-[11.5px] font-medium text-text-2">{s.phone}</span>
+                        </div>
                       </div>
-                    ) : (
-                      <Pill variant="warn">بانتظار الاعتماد</Pill>
+                      {!canApprove && <Pill variant="warn">بانتظار الاعتماد</Pill>}
+                    </div>
+                    {canApprove && (
+                      <div className="mt-3 flex gap-2 border-t border-accent-warm/15 pt-3 text-[12.5px]">
+                        <button onClick={() => openApproveDialog(s)} className="flex-1 rounded-md bg-accent px-3 py-1.5 font-medium text-[#F4EEE2] transition-colors hover:bg-accent-hover">اعتماد</button>
+                        <button onClick={() => rejectStudent(s.id)} className="flex-1 rounded-md border border-critical/50 px-3 py-1.5 font-medium text-critical transition-colors hover:bg-critical/10">رفض</button>
+                      </div>
                     )}
-                  </li>
+                  </div>
                 ))}
-              </ul>
+              </div>
             )}
           </div>
         </details>
@@ -224,6 +239,47 @@ export default function StudentsPage() {
           </div>
         </details>
       </div>
+
+      {/* ── البند ١٠: إيصالات السداد بانتظار مراجعة الأمير ── */}
+      {canApprove && pendingReceipts.length > 0 && (
+        <details open={openReceipts} onToggle={e => setOpenReceipts((e.target as HTMLDetailsElement).open)}
+          className="group mb-6 rounded-md border border-accent-warm/40 bg-accent-warm/[.06]">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3">
+            <span className="flex items-center gap-3">
+              <span className="grid h-8 w-8 place-items-center rounded-full bg-accent-warm/20 text-[13px] text-accent-warm-2">🧾</span>
+              <span>
+                <span className="text-[14px] font-medium text-text">إيصالات بانتظار المراجعة</span>
+                <span className="ms-2 num text-[12px] text-text-3">{pendingReceipts.length}</span>
+              </span>
+            </span>
+            <span className="text-[12px] text-text-3 transition-transform group-open:rotate-180">▾</span>
+          </summary>
+          <div className="border-t border-accent-warm/30">
+            <ul className="divide-y divide-line">
+              {pendingReceipts.map(s => {
+                const team = teams.find(t => t.id === s.teamId);
+                return (
+                  <li key={s.id} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-5 py-3">
+                    <button onClick={() => setViewReceipt(s)} className="shrink-0">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={s.receiptDataUrl} alt={`إيصال ${s.name}`} className="h-12 w-12 rounded border border-line object-cover hover:opacity-80" />
+                    </button>
+                    <div>
+                      <div className="text-[13.5px] text-text">{s.name}</div>
+                      <div className="num text-[11.5px] text-text-3">{team?.name ?? "—"} · مُصرَّح: {sar(s.receiptAmount ?? 0)} / {sar(s.totalAmount)} SAR</div>
+                    </div>
+                    <div className="flex gap-2 text-[12px]">
+                      <button onClick={() => setViewReceipt(s)} className="rounded border border-line-strong px-3 py-1 text-text-2 hover:border-accent hover:text-text">عرض</button>
+                      <button onClick={() => reviewReceipt(s.id, true)} className="rounded border border-ok/40 bg-ok/10 px-3 py-1 text-ok hover:bg-ok/20">اعتماد</button>
+                      <button onClick={() => reviewReceipt(s.id, false)} className="rounded border border-critical/40 bg-critical/10 px-3 py-1 text-critical hover:bg-critical/20">رفض</button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </details>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
@@ -372,6 +428,26 @@ export default function StudentsPage() {
           <p className="mt-3 text-[12px] text-text-3">
             سيُرسَل الرمز إلى <span className="num">{approveFor.phone}</span> عبر واتساب بعد الاعتماد (زر «↗ تذكير» في قائمة غير المسدَّدين).
           </p>
+        )}
+      </Modal>
+
+      {/* عرض إيصال السداد واعتماده/رفضه */}
+      <Modal
+        open={viewReceipt !== null}
+        onClose={() => setViewReceipt(null)}
+        title={viewReceipt ? `إيصال ${viewReceipt.name}` : ""}
+        subtitle={viewReceipt ? `مبلغٌ مُصرَّح: ${sar(viewReceipt.receiptAmount ?? 0)} / ${sar(viewReceipt.totalAmount)} SAR` : ""}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setViewReceipt(null)}>إغلاق</Button>
+            <Button variant="danger" onClick={() => { if (viewReceipt) reviewReceipt(viewReceipt.id, false); setViewReceipt(null); }}>رفض</Button>
+            <Button onClick={() => { if (viewReceipt) reviewReceipt(viewReceipt.id, true); setViewReceipt(null); }}>اعتماد السداد</Button>
+          </>
+        }
+      >
+        {viewReceipt?.receiptDataUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={viewReceipt.receiptDataUrl} alt="إيصال السداد" className="mx-auto max-h-[60vh] w-auto rounded border border-line" />
         )}
       </Modal>
     </div>

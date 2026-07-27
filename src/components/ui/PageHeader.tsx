@@ -36,7 +36,7 @@ export function PageHeader({
                 ) : (
                   <span>{c.label}</span>
                 )}
-                {i < crumbs.length - 1 && <span className="mx-2">›</span>}
+                {i < crumbs.length - 1 && <span className="mx-2">‹</span>}
               </span>
             ))}
           </div>
