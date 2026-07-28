@@ -5,7 +5,12 @@ import { useStore } from "@/lib/store/StoreProvider";
 /** Large showcase logo for the landing hero. Respects the Prince's
  *  site-wide logoDisplayMode (VISIBLE / BLURRED / HIDDEN). */
 export function HeroLogo() {
-  const { logoDisplayMode, logoUrl } = useStore();
+  const { logoDisplayMode, logoUrl, hydrated } = useStore();
+
+  // نحجز المساحة حتى تُحمَّل إعدادات الأمير، لمنع وميض الشعار الواضح قبل التغبيش/الإخفاء.
+  if (!hydrated) {
+    return <div aria-hidden className="relative mx-auto" style={{ width: "min(56vmin, 320px)", height: "min(56vmin, 320px)" }} />;
+  }
   if (logoDisplayMode === "HIDDEN") return null;
 
   const blurred = logoDisplayMode === "BLURRED";

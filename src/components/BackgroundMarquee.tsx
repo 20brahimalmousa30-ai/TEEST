@@ -72,9 +72,6 @@ export function BackgroundMarquee() {
   );
 }
 
-/** لون النصّ: واضحٌ لكن شبه شفّاف، مشتقٌّ من لون الهوية. */
-const INK = "color-mix(in srgb, var(--accent-warm, #C79A54) 22%, transparent)";
-
 /** نمط «أشرطة منزلقة»: عدّة صفوفٍ تنزلق أفقياً بسرعاتٍ واتجاهاتٍ متبادلة. */
 function SlideLayer({ phrases }: { phrases: string[] }) {
   const rows = 5;
@@ -97,7 +94,7 @@ function SlideLayer({ phrases }: { phrases: string[] }) {
             }}
           >
             <div
-              className="bm-anim"
+              className="bm-anim bm-ink"
               style={{
                 display: "inline-flex",
                 gap: "3rem",
@@ -105,8 +102,7 @@ function SlideLayer({ phrases }: { phrases: string[] }) {
                 animation: `${anim} ${duration}s linear infinite`,
                 fontFamily: "var(--font-messiri), serif",
                 fontWeight: 700,
-                fontSize: "clamp(1.6rem, 4.5vw, 3.4rem)",
-                color: INK,
+                fontSize: "clamp(1.9rem, 5vw, 3.4rem)",
               }}
             >
               <span>{line}</span>
@@ -130,7 +126,7 @@ function FloatLayer({ phrases }: { phrases: string[] }) {
         return (
           <div
             key={i}
-            className="bm-anim"
+            className="bm-anim bm-ink"
             style={{
               position: "absolute",
               bottom: 0,
@@ -139,8 +135,7 @@ function FloatLayer({ phrases }: { phrases: string[] }) {
               animation: `bm-float ${duration}s ease-in-out ${delay}s infinite`,
               fontFamily: "var(--font-messiri), serif",
               fontWeight: 600,
-              fontSize: "clamp(1.2rem, 3vw, 2.2rem)",
-              color: INK,
+              fontSize: "clamp(1.7rem, 5vw, 2.4rem)",
               whiteSpace: "nowrap",
             }}
           >
@@ -167,15 +162,14 @@ function FadeLayer({ phrase, idx }: { phrase: string; idx: number }) {
     >
       <div
         key={idx}
-        className="bm-anim"
+        className="bm-anim bm-ink"
         style={{
           animation: "bm-fade 4.5s ease-in-out",
           textAlign: "center",
           lineHeight: 1.25,
           fontFamily: "var(--font-messiri), serif",
           fontWeight: 700,
-          fontSize: "clamp(2.4rem, 9vw, 7rem)",
-          color: INK,
+          fontSize: "clamp(2.8rem, 10vw, 7rem)",
         }}
       >
         {phrase}

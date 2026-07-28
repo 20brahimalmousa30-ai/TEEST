@@ -12,7 +12,7 @@ import {
   dbAddInvoice, dbApproveInvoice, dbDeleteInvoice, dbRestoreInvoice,
   dbToggleRegField, dbReorderRegField, dbAddRegField, dbUpdateRegField, dbRemoveRegField, dbSetRegOpen,
   dbToggleAttendance, dbSetLogoDisplayMode, dbResetAll,
-  dbSetMotivations, dbSetTickerPhrases, dbSetTripMessage,
+  dbSetMotivations, dbSetTickerPhrases, dbSetTripMessage, dbSetPostRegisterNote,
   dbSetLogoUrl, dbSetBrandColors, dbSetPageMarquees,
 } from "@/lib/db/data";
 import { motivations as DEFAULT_MOTIVATIONS, tickerPhrases as DEFAULT_TICKER } from "@/lib/motivations";
@@ -59,6 +59,8 @@ export type State = {
   tickerPhrases: string[];
   /** رسالة السفرة (تُعرض في الصفحة الرئيسيّة) — يُحرّرها الأمير */
   tripMessage: string;
+  /** نصّ مربّع «ما التالي؟» بعد إرسال التسجيل — يُحرّرها الأمير */
+  postRegisterNote: string;
   /** شعارٌ مخصّص يرفعه الأمير (Data URL). فارغٌ = الشعار الافتراضي /logo.png */
   logoUrl: string;
   /** ألوان الهوية المشتقّة من الشعار — null = ألوان الثيم الافتراضيّة */
@@ -81,6 +83,7 @@ const initialState: State = {
   motivations:   DEFAULT_MOTIVATIONS,
   tickerPhrases: DEFAULT_TICKER,
   tripMessage:   "",
+  postRegisterNote: "",
   logoUrl:       "",
   brandColors:   null,
   pageMarquees:  {},
@@ -137,6 +140,8 @@ export type StoreActions = {
   setTickerPhrases(list: string[]): void;
   // Trip message (Prince only)
   setTripMessage(text: string): void;
+  // Post-registration note (Prince only)
+  setPostRegisterNote(text: string): void;
   // Site logo image + brand colors (Prince only) — البند ٦
   setLogoUrl(url: string): void;
   setBrandColors(colors: BrandColors | null): void;
@@ -454,6 +459,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setTickerPhrases(list) {
       update({ tickerPhrases: list });
       persist(() => dbSetTickerPhrases(list));
+    },
+    setPostRegisterNote(text) {
+      update({ postRegisterNote: text });
+      persist(() => dbSetPostRegisterNote(text));
     },
     setTripMessage(text) {
       update({ tripMessage: text });

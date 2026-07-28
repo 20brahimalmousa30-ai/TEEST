@@ -7,6 +7,7 @@ import { Field, TextArea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { useStore } from "@/lib/store/StoreProvider";
 import type { RegField } from "@/lib/store/StoreProvider";
+import { defaultPostRegisterNote } from "@/lib/motivations";
 
 const grades = ["الأول ثانوي", "الثاني ثانوي", "الثالث ثانوي"];
 const sections = ["ريادة", "علو", "قيادة"] as const;
@@ -16,7 +17,7 @@ const sections = ["ريادة", "علو", "قيادة"] as const;
  *  in settings is reflected here immediately. Reused by both `/register`
  *  and the vanity link `/register/[code]`. */
 export function RegisterExperience() {
-  const { registerStudent, regFields, regOpen, motivations } = useStore();
+  const { registerStudent, regFields, regOpen, motivations, postRegisterNote } = useStore();
 
   // Only the active fields, in their configured order.
   const activeFields = useMemo(() => regFields.filter(f => f.active), [regFields]);
@@ -123,19 +124,9 @@ export function RegisterExperience() {
 
           <div className="mt-8 mx-auto max-w-md rounded-md border border-line bg-surface/70 px-5 py-4 text-start text-[13px] text-text-2 backdrop-blur">
             <div className="mb-2 text-[11px] tracking-[.14em] text-text-3">ما التالي؟</div>
-            <ol className="grid gap-3 leading-[1.9]">
-              <li>١ · يراجع طلبَك <span className="text-text">الأميرُ</span> أو نائبُه.</li>
-              <li>
-                ٢ · لن يُعتمد قبولُك حتى تُسدِّد رسوم السفرة على حساب الجمعيّة:
-                <div className="mt-2 rounded border border-line bg-bg-raised px-3 py-2 text-[12.5px] leading-[2]">
-                  <div>رقم الحساب (IBAN): <span className="num text-accent">SA4480000585608011476325</span></div>
-                  <div>البنك: <span className="text-text">مصرف الراجحي</span></div>
-                  <div>المبلغ: <span className="text-text">٥٠٠ ريال</span></div>
-                  <div>يُرسَل إيصالُ السداد إلى <span className="text-text">رئيس القسم</span>.</div>
-                </div>
-              </li>
-              <li>٣ · عند الاعتماد ستصلك رسالةُ القبول متضمّنةً <span className="text-text">اسم المستخدم وكلمة المرور</span>.</li>
-            </ol>
+            <div className="leading-[1.9]" style={{ whiteSpace: "pre-line" }}>
+              {(postRegisterNote.trim() || defaultPostRegisterNote)}
+            </div>
           </div>
 
           <div className="mt-8 flex flex-wrap justify-center gap-3">

@@ -18,6 +18,7 @@ export default function SiteSettingsPage() {
   const {
     logoDisplayMode, setLogoDisplayMode,
     tripMessage, setTripMessage,
+    postRegisterNote, setPostRegisterNote,
     logoUrl, brandColors, setLogoUrl, setBrandColors,
   } = useStore();
   const { session } = useSession();
@@ -27,6 +28,11 @@ export default function SiteSettingsPage() {
   const [tripSaved, setTripSaved] = useState(false);
   // يزامن مسوّدة رسالة السفرة مع القيمة القادمة من قاعدة البيانات بعد التحميل.
   useEffect(() => { setTripDraft(tripMessage); }, [tripMessage]);
+
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteSaved, setNoteSaved] = useState(false);
+  // يزامن مسوّدة مربّع «ما التالي؟» مع القيمة القادمة من قاعدة البيانات بعد التحميل.
+  useEffect(() => { setNoteDraft(postRegisterNote); }, [postRegisterNote]);
 
   // ── رفع شعارٍ مخصّص واستخراج ألوان الهوية منه ──
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -219,6 +225,29 @@ export default function SiteSettingsPage() {
                 حفظ الرسالة
               </Button>
               {tripSaved && <span className="text-[12px] text-ok">✓ حُفظت</span>}
+            </div>
+          </Card>
+
+          <Card title="مربّع ما بعد التسجيل">
+            <p className="mb-3 text-[12.5px] leading-[1.8] text-text-2">
+              نصُّ مربّع «ما التالي؟» الذي يظهر للمُسجِّل بعد إرسال طلبه (خطوات المراجعة وبيانات
+              السداد). كلُّ سطرٍ يظهر كما تكتبه. اتركه فارغاً لعرض النصّ الافتراضيّ.
+            </p>
+            <textarea
+              value={noteDraft}
+              onChange={e => { setNoteDraft(e.target.value); setNoteSaved(false); }}
+              rows={9}
+              placeholder="اكتب خطوات ما بعد التسجيل وبيانات السداد…"
+              className="w-full rounded border border-line-strong bg-surface px-3 py-2 text-[13.5px] leading-[1.9]"
+            />
+            <div className="mt-3 flex items-center gap-2">
+              <Button
+                onClick={() => { setPostRegisterNote(noteDraft.trim()); setNoteSaved(true); }}
+                disabled={noteDraft === postRegisterNote}
+              >
+                حفظ المربّع
+              </Button>
+              {noteSaved && <span className="text-[12px] text-ok">✓ حُفظ</span>}
             </div>
           </Card>
         </div>

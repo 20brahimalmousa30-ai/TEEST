@@ -139,6 +139,7 @@ export async function loadAllData(): Promise<State> {
     motivations:    readPhrases(settings.data?.motivations, DEFAULT_MOTIVATIONS),
     tickerPhrases:  readPhrases(settings.data?.ticker_phrases, DEFAULT_TICKER),
     tripMessage:    settings.data?.trip_message ?? "",
+    postRegisterNote: settings.data?.post_register_note ?? "",
     logoUrl:        settings.data?.logo_url ?? "",
     brandColors:    (settings.data?.brand_accent && settings.data?.brand_accent_warm)
       ? { accent: settings.data.brand_accent as string, accentWarm: settings.data.brand_accent_warm as string }
@@ -597,6 +598,11 @@ export async function dbSetTickerPhrases(list: string[]) {
 export async function dbSetTripMessage(text: string) {
   await requireAdmin();
   const { error } = await getSupabase().from("app_settings").update({ trip_message: text }).eq("id", 1);
+  if (error) throw error;
+}
+export async function dbSetPostRegisterNote(text: string) {
+  await requireAdmin();
+  const { error } = await getSupabase().from("app_settings").update({ post_register_note: text }).eq("id", 1);
   if (error) throw error;
 }
 /** البند ٦: يحفظ شعار الموقع المخصّص (Data URL). فارغٌ = استعادة الشعار الافتراضي. */

@@ -12,7 +12,13 @@ type LogoProps = {
 };
 
 export function Logo({ size = 48, className, priority = false }: LogoProps) {
-  const { logoDisplayMode, logoUrl } = useStore();
+  const { logoDisplayMode, logoUrl, hydrated } = useStore();
+
+  // قبل تحميل إعدادات الأمير من القاعدة لا نعرف الوضع الحقيقيّ (قد يكون مغبَّشاً/مخفياً).
+  // نحجز المساحة بعنصرٍ شفّاف حتى الترطيب لمنع «وميض» الشعار الواضح ثمّ تغبيشه.
+  if (!hydrated) {
+    return <span aria-hidden className={className} style={{ display: "inline-flex", height: size, width: size }} />;
+  }
 
   // Prince-controlled, site-wide: hide the mark entirely.
   if (logoDisplayMode === "HIDDEN") return null;

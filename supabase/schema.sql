@@ -336,6 +336,9 @@ $$;
 -- البند ٦: رسالة السفرة (تُعرض في الصفحة الرئيسة، يُحرّرها الأمير).
 alter table app_settings add column if not exists trip_message text;
 
+-- نصّ مربّع «ما التالي؟» بعد إرسال التسجيل (خطوات المراجعة وبيانات السداد، يُحرّرها الأمير).
+alter table app_settings add column if not exists post_register_note text;
+
 -- البند ٨: وضعٌ رابعٌ للشعار «متحرك» (ANIMATED) — توسيع قيد logo_display_mode.
 do $$
 begin
