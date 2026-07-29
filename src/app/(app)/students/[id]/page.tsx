@@ -93,14 +93,21 @@ export default function StudentDetail() {
         <div className="flex flex-col gap-6">
           <Card padded={false}>
             <div className="flex items-center gap-4 border-b border-line p-6">
-              {s.photoDataUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={s.photoDataUrl} alt={s.name} className="h-16 w-16 rounded-full object-cover" />
-              ) : (
+              {/* الحرف الأوّل كخلفيّة، والصورة فوقه تُجلَب عند الطلب؛ إن لم توجد صورة
+                  (404) يُخفى الـ img فيظهر الحرفُ تلقائياً. */}
+              <div className="relative h-16 w-16 shrink-0">
                 <div className="grid h-16 w-16 place-items-center rounded-full bg-accent text-[24px] font-semibold" style={{ color: "#F4EEE2" }}>
                   {s.name.split(" ")[0]?.[0]}
                 </div>
-              )}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/api/students/${s.id}/image?kind=photo`}
+                  alt={s.name}
+                  loading="lazy"
+                  className="absolute inset-0 h-16 w-16 rounded-full object-cover"
+                  onError={e => { e.currentTarget.style.display = "none"; }}
+                />
+              </div>
               <div>
                 <div className="text-[18px] font-semibold text-text">{s.name}</div>
                 <div className="mt-1 text-[12.5px] text-text-3">الهويّة: <span className="num text-text-2">{s.nationalIdMasked}</span></div>

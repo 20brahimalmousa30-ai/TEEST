@@ -277,7 +277,7 @@ export default function StudentsPage() {
                   <li key={s.id} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-5 py-3">
                     <button onClick={() => setViewReceipt(s)} className="shrink-0">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={s.receiptDataUrl} alt={`إيصال ${s.name}`} className="h-12 w-12 rounded border border-line object-cover hover:opacity-80" />
+                      <img src={`/api/students/${s.id}/image?kind=receipt`} loading="lazy" alt={`إيصال ${s.name}`} className="h-12 w-12 rounded border border-line object-cover hover:opacity-80" />
                     </button>
                     <div>
                       <div className="text-[13.5px] text-text">{s.name}</div>
@@ -465,9 +465,9 @@ export default function StudentsPage() {
           </>
         }
       >
-        {viewReceipt?.receiptDataUrl && (
+        {viewReceipt && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={viewReceipt.receiptDataUrl} alt="إيصال السداد" className="mx-auto max-h-[60vh] w-auto rounded border border-line" />
+          <img src={`/api/students/${viewReceipt.id}/image?kind=receipt`} alt="إيصال السداد" className="mx-auto max-h-[60vh] w-auto rounded border border-line" />
         )}
       </Modal>
     </div>

@@ -57,13 +57,46 @@ function statusMeta(s: Student): { label: string; color: string } {
   return { label: "معتمد", color: BRAND.ok };
 }
 
-/** خليّة الصورة الشخصيّة: صورةٌ دائريّة إن وُجدت، وإلّا الحرف الأوّل. */
-function photoCell(s: Student): string {
+/** خليّة الصورة الشخصيّة: صورةٌ دائريّة إن وُجدت، وإلّا الحرف الأوّل.
+ *  الصور تُجلَب عند التصدير فقط (خريطةُ id→dataUrl) لا من لقطة الحالة. */
+function photoCell(s: Student, photos: Record<string, string>): string {
   const initial = esc(s.name.trim().charAt(0) || "؟");
-  if (s.photoDataUrl) {
-    return `<img src="${s.photoDataUrl}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;border:1.5px solid ${BRAND.goldSoft};display:block" />`;
+  const photo = photos[s.id] ?? s.photoDataUrl;
+  if (photo) {
+    return `<img src="${photo}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;border:1.5px solid ${BRAND.goldSoft};display:block" />`;
   }
   return `<div style="width:34px;height:34px;border-radius:50%;background:${BRAND.petroleum};color:${BRAND.band};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700">${initial}</div>`;
+}
+
+/** يجلب صورةً من مسارٍ ويحوّلها إلى data URL (أو null إن لم توجد). */
+async function fetchAsDataUrl(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise<string | null>(resolve => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result));
+      r.onerror = () => resolve(null);
+      r.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** يجلب صور الشباب الشخصيّة عند التصدير (دفعاتٌ محدودة التزامن لتفادي إغراق الشبكة). */
+async function loadStudentPhotos(students: Student[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  const CONCURRENCY = 6;
+  for (let i = 0; i < students.length; i += CONCURRENCY) {
+    const batch = students.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async s => [s.id, await fetchAsDataUrl(`/api/students/${s.id}/image?kind=photo`)] as const),
+    );
+    for (const [id, url] of results) if (url) out[id] = url;
+  }
+  return out;
 }
 
 /** رأس الصفحة: الشعار + عنوان التقرير + تاريخ التصدير + شريط بترولي. */
@@ -105,7 +138,7 @@ function theadHtml(): string {
 }
 
 /** صفٌّ واحد في الجدول. */
-function rowHtml(s: Student, idx: number, teams: Team[], supervisors: Supervisor[]): string {
+function rowHtml(s: Student, idx: number, teams: Team[], supervisors: Supervisor[], photos: Record<string, string>): string {
   const team = teams.find(t => t.id === s.teamId);
   const supervisor = team ? supervisors.find(v => v.id === team.supervisorId) : undefined;
   const st = statusMeta(s);
@@ -117,7 +150,7 @@ function rowHtml(s: Student, idx: number, teams: Team[], supervisors: Supervisor
   return `
     <tr style="background:${zebra}">
       ${td(`<span style="color:${BRAND.sub};font-size:11px">${idx + 1}</span>`)}
-      ${td(`<div style="display:flex;justify-content:center">${photoCell(s)}</div>`)}
+      ${td(`<div style="display:flex;justify-content:center">${photoCell(s, photos)}</div>`)}
       ${td(`<span style="font-weight:600">${esc(s.name)}</span>`, "right")}
       ${td(`<span dir="ltr" style="unicode-bidi:plaintext">${esc(s.phone)}</span>`)}
       ${td(`<span style="display:inline-block;padding:2px 9px;border-radius:20px;font-size:10.5px;font-weight:700;color:#fff;background:${st.color}">${st.label}</span>`)}
@@ -190,10 +223,11 @@ export async function exportStudentsPdf(input: StudentsReportInput): Promise<voi
   const title = input.title ?? "تقرير بيانات الشباب";
   const dateStr = arDate(new Date().toISOString());
 
-  const [{ jsPDF }, html2canvasMod, logo] = await Promise.all([
+  const [{ jsPDF }, html2canvasMod, logo, photos] = await Promise.all([
     import("jspdf"),
     import("html2canvas"),
     loadLogo(),
+    loadStudentPhotos(students),
   ]);
   const html2canvas = html2canvasMod.default;
 
@@ -213,7 +247,7 @@ export async function exportStudentsPdf(input: StudentsReportInput): Promise<voi
 
   students.forEach((s, i) => {
     const wrap = document.createElement("tbody");
-    wrap.innerHTML = rowHtml(s, i, teams, supervisors);
+    wrap.innerHTML = rowHtml(s, i, teams, supervisors, photos);
     const row = wrap.firstElementChild as HTMLTableRowElement;
     cur.tbody.appendChild(row);
     if (cur.tbody.offsetHeight > cur.avail && cur.tbody.children.length > 1) {

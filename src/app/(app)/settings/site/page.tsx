@@ -19,10 +19,12 @@ export default function SiteSettingsPage() {
     logoDisplayMode, setLogoDisplayMode,
     tripMessage, setTripMessage,
     postRegisterNote, setPostRegisterNote,
-    logoUrl, brandColors, setLogoUrl, setBrandColors,
+    logoUrl, logoVersion, brandColors, setLogoUrl, setBrandColors,
   } = useStore();
   const { session } = useSession();
   const canControlLogo = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
+  // شعارٌ مخصّصٌ مُطبَّق حالياً؟ (معاينةُ الجلسة أو إصدارٌ محفوظٌ في القاعدة)
+  const hasCustomLogo = Boolean((logoUrl ?? "").trim()) || logoVersion > 0;
 
   const [tripDraft, setTripDraft] = useState("");
   const [tripSaved, setTripSaved] = useState(false);
@@ -105,11 +107,11 @@ export default function SiteSettingsPage() {
               </div>
               <div className="flex-1">
                 <div className="text-[12.5px] text-text-2">
-                  {logoDraft ? "معاينةٌ حيّة — لم تُحفظ بعد." : logoUrl ? "شعارٌ مخصّصٌ مُطبَّق حاليّاً." : "الشعار الافتراضي مُطبَّق."}
+                  {logoDraft ? "معاينةٌ حيّة — لم تُحفظ بعد." : hasCustomLogo ? "شعارٌ مخصّصٌ مُطبَّق حاليّاً." : "الشعار الافتراضي مُطبَّق."}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button variant="outline" onClick={() => logoInputRef.current?.click()}>اختر صورة…</Button>
-                  {logoUrl && !logoDraft && <Button variant="outline" onClick={revertLogo}>استعادة الافتراضي</Button>}
+                  {hasCustomLogo && !logoDraft && <Button variant="outline" onClick={revertLogo}>استعادة الافتراضي</Button>}
                 </div>
                 <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" onChange={onPickLogo} className="hidden" />
               </div>

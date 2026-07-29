@@ -23,6 +23,19 @@ import type { DbSession } from "./types";
 const STAFF = ["PRINCE", "DEPUTY_PRINCE", "SUPERVISOR"];
 const ADMIN = ["PRINCE", "DEPUTY_PRINCE"];
 
+/** كلُّ أعمدة جدول الطلاب **ما عدا** أعمدة الصور base64 الثقيلة
+ *  (photo_data_url / receipt_data_url). تُستعمل في اللقطة الجماعية للطاقم
+ *  حتى لا تُنقَل الصور في كلّ تحميل؛ تُجلَب الصور عند الطلب عبر مسارٍ مستقلّ. */
+const STUDENT_LEAN_COLUMNS =
+  "id,name,national_id_masked,phone,grade,section,team_id,payment_status," +
+  "paid_amount,total_amount,points,emergency_contact,emergency_phone,attendance," +
+  "approval_status,registered_at,access_code,receipt_status,receipt_amount,receipt_submitted_at";
+
+/** كلُّ أعمدة الإعدادات **ما عدا** logo_url (base64 ثقيل يُجلَب عند الطلب). */
+const APP_SETTINGS_LEAN_COLUMNS =
+  "id,reg_open,logo_display_mode,motivations,ticker_phrases,trip_message," +
+  "post_register_note,brand_accent,brand_accent_warm,page_marquees,logo_version";
+
 async function requireSession(): Promise<DbSession> {
   const s = await getSession();
   if (!s) throw new Error("غير مصرّح — يجب تسجيل الدخول.");
@@ -129,22 +142,36 @@ export async function loadAllData(): Promise<State> {
   // إعداداتٌ وحقولُ تسجيلٍ عامّة — تحتاجها صفحةُ التسجيل والواجهةُ حتى بلا جلسة.
   const [regRows, settings] = await Promise.all([
     db.from("reg_fields").select("*").order("sort", { ascending: true }),
-    db.from("app_settings").select("*").eq("id", 1).single(),
+    // نستبعد logo_url (base64 ثقيل ≈ ٢٥٠ ك.ب) من كل تحميلٍ للصفحة؛ يُجلَب الشعار
+    // عند الطلب عبر /api/logo، ونكتفي هنا بـ logo_version الخفيف لبناء الرابط.
+    db.from("app_settings").select(APP_SETTINGS_LEAN_COLUMNS).eq("id", 1).single(),
   ]);
+
+  // تحديدُ أعمدةٍ بسلسلةٍ متغيّرة يُفقِد Supabase استنتاجَ نوع الصفّ، فنُصرّح به يدويّاً.
+  const s = settings.data as {
+    reg_open?: boolean; logo_display_mode?: string;
+    motivations?: unknown; ticker_phrases?: unknown;
+    trip_message?: string; post_register_note?: string;
+    logo_version?: number; brand_accent?: string; brand_accent_warm?: string;
+    page_marquees?: unknown;
+  } | null;
 
   const publicState = {
     regFields:      (regRows.data ?? []).map(rowToRegField),
-    regOpen:        settings.data?.reg_open ?? true,
-    logoDisplayMode: (settings.data?.logo_display_mode ?? "ANIMATED") as LogoDisplayMode,
-    motivations:    readPhrases(settings.data?.motivations, DEFAULT_MOTIVATIONS),
-    tickerPhrases:  readPhrases(settings.data?.ticker_phrases, DEFAULT_TICKER),
-    tripMessage:    settings.data?.trip_message ?? "",
-    postRegisterNote: settings.data?.post_register_note ?? "",
-    logoUrl:        settings.data?.logo_url ?? "",
-    brandColors:    (settings.data?.brand_accent && settings.data?.brand_accent_warm)
-      ? { accent: settings.data.brand_accent as string, accentWarm: settings.data.brand_accent_warm as string }
+    regOpen:        s?.reg_open ?? true,
+    logoDisplayMode: (s?.logo_display_mode ?? "ANIMATED") as LogoDisplayMode,
+    motivations:    readPhrases(s?.motivations, DEFAULT_MOTIVATIONS),
+    tickerPhrases:  readPhrases(s?.ticker_phrases, DEFAULT_TICKER),
+    tripMessage:    s?.trip_message ?? "",
+    postRegisterNote: s?.post_register_note ?? "",
+    // logoUrl فارغٌ في اللقطة (لا نشحن base64)؛ الشعار المخصّص يُعرض عبر /api/logo
+    // اعتماداً على logoVersion. يبقى logoUrl للمعاينة الفوريّة بعد الرفع فقط.
+    logoUrl:        "",
+    logoVersion:    s?.logo_version ?? 0,
+    brandColors:    (s?.brand_accent && s?.brand_accent_warm)
+      ? { accent: s.brand_accent, accentWarm: s.brand_accent_warm }
       : null,
-    pageMarquees:   (settings.data?.page_marquees ?? {}) as PageMarqueeMap,
+    pageMarquees:   (s?.page_marquees ?? {}) as PageMarqueeMap,
   };
 
   const base: State = {
@@ -173,11 +200,15 @@ export async function loadAllData(): Promise<State> {
   // غيرُ الطاقم (دورٌ غير معروف): لا بيانات شخصيّة.
   if (!STAFF.includes(session.role)) return base;
 
-  // الطاقم: لقطةٌ كاملة.
+  // الطاقم: لقطةٌ كاملة — لكن **دون** أعمدة base64 الثقيلة
+  // (photo_data_url / receipt_data_url). كانت هذه الأعمدة تنقل ميغابايتات
+  // في كلّ تحميلٍ للصفحة (صورةٌ واحدة ≈ ٣٠٠ ك.ب) وتتضخّم خطّياً مع عدد
+  // المستفيدين، فصارت أكبر سببٍ لبطء الموقع. تُجلَب الصور الآن عند الطلب
+  // فقط عبر مسار /api/students/[id]/image عند عرض صورةٍ بعينها.
   const [teams, students, supervisors, committees, invoices, attRows, asgRows] =
     await Promise.all([
       db.from("teams").select("*").order("points", { ascending: false }),
-      db.from("students").select("*").order("points", { ascending: false }),
+      db.from("students").select(STUDENT_LEAN_COLUMNS).order("points", { ascending: false }),
       db.from("supervisors").select("*"),
       db.from("committees").select("*"),
       db.from("invoices").select("*").order("created_at", { ascending: false }),
@@ -605,13 +636,19 @@ export async function dbSetPostRegisterNote(text: string) {
   const { error } = await getSupabase().from("app_settings").update({ post_register_note: text }).eq("id", 1);
   if (error) throw error;
 }
-/** البند ٦: يحفظ شعار الموقع المخصّص (Data URL). فارغٌ = استعادة الشعار الافتراضي. */
+/** البند ٦: يحفظ شعار الموقع المخصّص (Data URL). فارغٌ = استعادة الشعار الافتراضي.
+ *  نُبدّل logo_version أيضاً: قيمةٌ جديدة عند الرفع (لكسر التخزين المؤقّت)، و0 عند
+ *  الاستعادة (تعني «لا شعار مخصّص»). */
 export async function dbSetLogoUrl(url: string) {
   await requireAdmin();
   if (url) assertValidImage(url);
-  const { error } = await getSupabase().from("app_settings").update({ logo_url: url || null }).eq("id", 1);
+  const { error } = await getSupabase()
+    .from("app_settings")
+    .update({ logo_url: url || null, logo_version: url ? Date.now() : 0 })
+    .eq("id", 1);
   if (error) throw error;
 }
+
 /** البند ٦: يحفظ ألوان الهوية المشتقّة من الشعار. null = استعادة ألوان الثيم الافتراضيّة. */
 export async function dbSetBrandColors(colors: { accent: string; accentWarm: string } | null) {
   await requireAdmin();

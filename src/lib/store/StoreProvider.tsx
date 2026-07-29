@@ -61,8 +61,12 @@ export type State = {
   tripMessage: string;
   /** نصّ مربّع «ما التالي؟» بعد إرسال التسجيل — يُحرّرها الأمير */
   postRegisterNote: string;
-  /** شعارٌ مخصّص يرفعه الأمير (Data URL). فارغٌ = الشعار الافتراضي /logo.png */
+  /** شعارٌ مخصّص يرفعه الأمير (Data URL) — للمعاينة الفوريّة بعد الرفع فقط؛
+   *  لا يُشحن في لقطة التحميل. فارغٌ = استعمِل logoVersion/الافتراضي. */
   logoUrl: string;
+  /** إصدار الشعار المخصّص (0 = لا شعار مخصّص). يبني رابط /api/logo?v= ويكسر
+   *  التخزين المؤقّت عند التغيير — بديلٌ خفيفٌ عن شحن base64 في كل تحميل. */
+  logoVersion: number;
   /** ألوان الهوية المشتقّة من الشعار — null = ألوان الثيم الافتراضيّة */
   brandColors: BrandColors | null;
   /** خلفيّة تحفيزيّة متحرّكة لكلّ صفحة — يُحرّرها الأمير (المفتاح = صفحة) */
@@ -85,6 +89,7 @@ const initialState: State = {
   tripMessage:   "",
   postRegisterNote: "",
   logoUrl:       "",
+  logoVersion:   0,
   brandColors:   null,
   pageMarquees:  {},
 };
@@ -469,7 +474,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       persist(() => dbSetTripMessage(text));
     },
     setLogoUrl(url) {
-      update({ logoUrl: url });
+      // معاينةٌ فوريّة عبر logoUrl، وتبديلُ logoVersion ليعرض /api/logo الجديد
+      // بعد المزامنة (حين يُفرَّغ logoUrl عند إعادة التحميل). 0 = استعادة الافتراضي.
+      update({ logoUrl: url, logoVersion: url ? Date.now() : 0 });
       persist(() => dbSetLogoUrl(url));
     },
     setBrandColors(colors) {

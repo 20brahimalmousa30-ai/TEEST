@@ -12,7 +12,7 @@ type LogoProps = {
 };
 
 export function Logo({ size = 48, className, priority = false }: LogoProps) {
-  const { logoDisplayMode, logoUrl, hydrated } = useStore();
+  const { logoDisplayMode, logoUrl, logoVersion, hydrated } = useStore();
 
   // قبل تحميل إعدادات الأمير من القاعدة لا نعرف الوضع الحقيقيّ (قد يكون مغبَّشاً/مخفياً).
   // نحجز المساحة بعنصرٍ شفّاف حتى الترطيب لمنع «وميض» الشعار الواضح ثمّ تغبيشه.
@@ -25,7 +25,9 @@ export function Logo({ size = 48, className, priority = false }: LogoProps) {
 
   const blurred = logoDisplayMode === "BLURRED";
   const animated = logoDisplayMode === "ANIMATED";
-  const custom = (logoUrl ?? "").trim();
+  // معاينةٌ فوريّة (logoUrl) بعد الرفع، وإلّا الشعارُ المخصّص عند الطلب عبر المسار
+  // إن وُجد إصدار، وإلّا الافتراضي. لا يُشحن base64 في التحميل.
+  const custom = (logoUrl ?? "").trim() || (logoVersion > 0 ? `/api/logo?v=${logoVersion}` : "");
 
   // Source is a square-cropped image; render as square, use object-contain
   // so the actual mark centres cleanly inside whatever height is asked.

@@ -5,7 +5,7 @@ import { useStore } from "@/lib/store/StoreProvider";
 /** Large showcase logo for the landing hero. Respects the Prince's
  *  site-wide logoDisplayMode (VISIBLE / BLURRED / HIDDEN). */
 export function HeroLogo() {
-  const { logoDisplayMode, logoUrl, hydrated } = useStore();
+  const { logoDisplayMode, logoUrl, logoVersion, hydrated } = useStore();
 
   // نحجز المساحة حتى تُحمَّل إعدادات الأمير، لمنع وميض الشعار الواضح قبل التغبيش/الإخفاء.
   if (!hydrated) {
@@ -15,7 +15,8 @@ export function HeroLogo() {
 
   const blurred = logoDisplayMode === "BLURRED";
   const animated = logoDisplayMode === "ANIMATED";
-  const custom = (logoUrl ?? "").trim();
+  // معاينةٌ فوريّة أو الشعار المخصّص عند الطلب عبر المسار (لا base64 في التحميل).
+  const custom = (logoUrl ?? "").trim() || (logoVersion > 0 ? `/api/logo?v=${logoVersion}` : "");
   const filter = blurred
     ? "blur(14px) drop-shadow(0 8px 24px rgba(44,107,121,.18))"
     : "drop-shadow(0 8px 24px rgba(44,107,121,.18))";

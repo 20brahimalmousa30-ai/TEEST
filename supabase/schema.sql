@@ -371,6 +371,11 @@ alter table app_settings add column if not exists logo_url          text;
 alter table app_settings add column if not exists brand_accent      text;
 alter table app_settings add column if not exists brand_accent_warm text;
 
+-- إصدار الشعار: رقمٌ خفيف (0 = لا شعار مخصّص) يُبدَّل عند كل رفع. يسمح باستبعاد
+-- الشعار الثقيل (base64 ≈ ٢٥٠ ك.ب) من لقطة loadAllData، وجلبه بدلاً منه عند الطلب
+-- عبر مسار /api/logo مع كسر التخزين المؤقّت (?v=logo_version) عند التغيير.
+alter table app_settings add column if not exists logo_version bigint not null default 0;
+
 -- جُملٌ تحفيزيّة متحرّكة في خلفيّة كل صفحة، يُحرّرها الأمير (إضافة/تعديل/حذف)
 -- ويختار نمط الحركة لكلّ صفحة. تُخزَّن كخريطة JSON:
 --   { "<pageKey>": { "phrases": ["..."], "style": "slide|float|fade", "enabled": true } }
