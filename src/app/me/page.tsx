@@ -10,12 +10,14 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { useSession, clearSession, announceSessionChange } from "@/lib/auth/session";
 import { useStore } from "@/lib/store/StoreProvider";
+import { LoadErrorBanner } from "@/components/LoadErrorBanner";
+import { VersionWatcher } from "@/components/VersionWatcher";
 import { sar } from "@/lib/format";
 
 export default function MePage() {
   const { session, ready } = useSession();
   const router = useRouter();
-  const { students, teams, submitReceipt, setStudentPhoto } = useStore();
+  const { students, teams, submitReceipt, setStudentPhoto, hydrated, loadError } = useStore();
   const [payOpen, setPayOpen] = useState(false);
   const [photoErr, setPhotoErr] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -65,7 +67,19 @@ export default function MePage() {
   const student = session?.studentId ? students.find(s => s.id === session.studentId) : null;
   useEffect(() => { document.title = student ? `${student.name.split(" ")[0]} — معالي` : "معالي محافظة بلّسمر"; }, [student]);
 
-  if (!ready || !student) {
+  // فشلُ تحميل البيانات (نسخةٌ قديمة/شبكة/خادم) يجب ألّا يظهر كـ«تحميلٍ» أبديّ صامت.
+  if (!student && hydrated && loadError) {
+    return (
+      <main className="min-h-screen">
+        <div className="mx-auto max-w-2xl px-6 py-10">
+          <LoadErrorBanner />
+        </div>
+        <VersionWatcher />
+      </main>
+    );
+  }
+  // لم تُحمَّل بعد (الجلسة أو اللقطة قيدَ الوصول) → مؤشّر تحميلٍ مؤقّت.
+  if (!ready || !hydrated || !student) {
     return (
       <main className="grid min-h-screen place-items-center">
         <div className="text-[13px] text-text-3">جارٍ التحميل...</div>
@@ -89,6 +103,9 @@ export default function MePage() {
           </button>
         </div>
       </header>
+
+      <div className="mx-auto max-w-4xl"><LoadErrorBanner /></div>
+      <VersionWatcher />
 
       <div className="mx-auto max-w-4xl px-6 py-10">
         <div className="mb-8 flex items-center gap-3">

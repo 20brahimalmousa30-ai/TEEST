@@ -3,6 +3,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Logo } from "./Logo";
+import { LoadErrorBanner } from "./LoadErrorBanner";
+import { VersionWatcher } from "./VersionWatcher";
 import { useSession, clearSession, announceSessionChange } from "@/lib/auth/session";
 import { roleLabel } from "@/lib/auth/accounts";
 import { useStore } from "@/lib/store/StoreProvider";
@@ -62,7 +64,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "";
   const router = useRouter();
   const { session, ready } = useSession();
-  const { supervisors, hydrated, loadError, retry } = useStore();
+  const { supervisors, hydrated } = useStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // البند ١٨: صلاحيات المشرف الحاليّ (تُقرأ من المتجر عبر supervisorId في الجلسة).
@@ -247,21 +249,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="w-9" />
           )}
         </div>
-        {/* شريطُ تعذّر الاتصال: يظهر حين يفشل جلب اللقطة (شبكة/إجراء خادمٍ قديم بعد
-            النشر) بدل عرض قوائم فارغةٍ توحي بضياع البيانات. البيانات سليمةٌ في القاعدة. */}
-        {hydrated && loadError && (
-          <div className="mx-4 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-critical/40 bg-critical/10 px-4 py-3 text-[13px] text-critical">
-            <span>
-              تعذّر الاتصال بالخادم، ولم تُحمَّل البيانات. <span className="text-text-2">بياناتك محفوظةٌ وسليمة</span> — أعد المحاولة أو حدِّث الصفحة.
-            </span>
-            <button
-              onClick={retry}
-              className="shrink-0 rounded border border-critical/50 bg-critical/15 px-3 py-1 font-medium text-critical hover:bg-critical/25"
-            >
-              إعادة المحاولة
-            </button>
-          </div>
-        )}
+        {/* مبدأٌ ثابت: فشل التحميل يظهر صراحةً (بدل قوائم فارغةٍ توحي بالحذف). */}
+        <LoadErrorBanner />
         <main className="flex-1">{children}</main>
       </div>
     </div>
@@ -286,6 +275,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
     </div>
+
+    {/* كشفٌ تلقائيّ لأيّ نشرٍ جديد → «تحديث الآن» دون تدخّلٍ يدويّ. */}
+    <VersionWatcher />
     </>
   );
 }
