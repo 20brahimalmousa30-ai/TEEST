@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { Button } from "@/components/ui/Button";
 import { Modal, Confirm } from "@/components/ui/Modal";
-import { Field } from "@/components/ui/Field";
+import { Field, TextArea } from "@/components/ui/Field";
 import { useStore } from "@/lib/store/StoreProvider";
 import { useSession } from "@/lib/auth/session";
 import { copyText } from "@/lib/download";
@@ -16,13 +16,25 @@ import { sar, arDate as fmtDate } from "@/lib/format";
 const grades = ["الأول ثانوي", "الثاني ثانوي", "الثالث ثانوي"];
 const sections = ["ريادة", "علو", "قيادة"] as const;
 
+/** مفاتيح حقول التسجيل التي يقابلها عمودٌ ثابت (تُعرَض في رأس الصفحة/بطاقاتها)،
+ *  فلا تُكرَّر في قسم «تفاصيل التسجيل» المخصّص لبقيّة الإجابات. */
+const STANDARD_KEYS = new Set(["name", "phone", "grade", "section", "photo", "emergN", "emergP", "nid"]);
+
 export default function StudentDetail() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { session } = useSession();
   // رقم الهوية الكامل للإدارة فقط (الأمير/نائبه)؛ غيرهم يرى القناع.
   const canApprove = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
-  const { students, teams, updateStudent, deleteStudent, moveStudent, setPayment } = useStore();
+  const { students, teams, supervisors, regFields, updateStudent, deleteStudent, moveStudent, setPayment } = useStore();
+  // صلاحيّة إدارة الطلاب: الإدارة، أو مشرفٌ مُنِح صلاحيّة «students» — بنفس منطق
+  // requirePermission("students") في الخادم. تُخفي أزرار التعديل عمّن لا يملكها.
+  const canManage = canApprove || (
+    session?.role === "SUPERVISOR" && !!session.supervisorId &&
+    (supervisors.find(x => x.id === session.supervisorId)?.permissions ?? []).includes("students")
+  );
+  // حقول التسجيل المخصّصة (غير الثابتة) النشطة — تُعرَض وتُحرَّر كإجابات.
+  const customFields = regFields.filter(f => f.active && !STANDARD_KEYS.has(f.key));
   const [editOpen, setEditOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
@@ -35,7 +47,10 @@ export default function StudentDetail() {
     name: s?.name ?? "", phone: s?.phone ?? "",
     grade: s?.grade ?? grades[0], section: (s?.section ?? sections[0]) as (typeof sections)[number],
     emergencyContact: s?.emergencyContact ?? "", emergencyPhone: s?.emergencyPhone ?? "",
+    nationalId: s?.nationalId ?? "",
   });
+  // إجابات الحقول المخصّصة أثناء التحرير (مفتاح الحقل → القيمة).
+  const [answers, setAnswers] = useState<Record<string, string>>(s?.regAnswers ?? {});
   const [moveTo, setMoveTo] = useState(s?.teamId ?? "");
   const [payAmt, setPayAmt] = useState(s?.paidAmount ?? 0);
 
@@ -45,7 +60,9 @@ export default function StudentDetail() {
       setForm({
         name: s.name, phone: s.phone, grade: s.grade, section: s.section,
         emergencyContact: s.emergencyContact, emergencyPhone: s.emergencyPhone,
+        nationalId: s.nationalId ?? "",
       });
+      setAnswers(s.regAnswers ?? {});
       setMoveTo(s.teamId); setPayAmt(s.paidAmount);
     }
   }, [s]);
@@ -64,7 +81,21 @@ export default function StudentDetail() {
 
   function saveEdit(e: React.FormEvent) {
     e.preventDefault();
-    updateStudent(s!.id, { ...form });
+    const { nationalId, ...base } = form;
+    const patch: Partial<typeof s> = {
+      ...base,
+      // نُبقي فقط إجابات الحقول المخصّصة النشطة (بعد قصّ الفراغات).
+      regAnswers: Object.fromEntries(
+        customFields.map(f => [f.key, (answers[f.key] ?? "").trim()]).filter(([, v]) => v),
+      ),
+    };
+    // رقم الهوية حسّاسٌ — يُعدّله الأمير/نائبه فقط، ونشتقّ القناع منه.
+    if (canApprove) {
+      const nid = nationalId.trim();
+      patch.nationalId = nid;
+      patch.nationalIdMasked = nid ? "••••••" + nid.slice(-4) : "";
+    }
+    updateStudent(s!.id, patch);
     setEditOpen(false);
   }
   function saveMove(e: React.FormEvent) {
@@ -155,6 +186,26 @@ export default function StudentDetail() {
               </div>
             </div>
           </Card>
+
+          {/* تفاصيل التسجيل: إجابات الحقول المخصّصة التي لا تظهر في رأس الصفحة/بطاقاتها.
+              نعرض كلّ حقلٍ نشط، و«لم يُجب» للاختياريّ الذي تركه الطالب فارغاً. */}
+          {customFields.length > 0 && (
+            <Card title="تفاصيل التسجيل">
+              <dl className="grid gap-3 text-[13.5px]">
+                {customFields.map(f => {
+                  const ans = (s.regAnswers?.[f.key] ?? "").trim();
+                  return (
+                    <div key={f.key} className="grid gap-1 border-b border-line pb-3 last:border-0 last:pb-0">
+                      <dt className="text-[12px] text-text-3">{f.label}</dt>
+                      <dd className={ans ? "text-text leading-[1.8]" : "italic text-text-3"} style={{ whiteSpace: "pre-line" }}>
+                        {ans || "لم يُجب"}
+                      </dd>
+                    </div>
+                  );
+                })}
+              </dl>
+            </Card>
+          )}
         </div>
 
         <div className="flex flex-col gap-6">
@@ -174,17 +225,23 @@ export default function StudentDetail() {
                 background: s.paymentStatus === "PAID" ? "var(--ok)" : "var(--accent-warm)"
               }} />
             </div>
-            <div className="mt-4">
-              <Button variant="outline" onClick={() => setPayOpen(true)}>تعديل المبلغ المسدَّد</Button>
-            </div>
+            {canManage && (
+              <div className="mt-4">
+                <Button variant="outline" onClick={() => setPayOpen(true)}>تعديل المبلغ المسدَّد</Button>
+              </div>
+            )}
           </Card>
 
           <Card title="الإجراءات">
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => setLinkOpen(true)}>🔗 إرسال رابط ولي الأمر</Button>
-              <Button variant="outline" onClick={() => setEditOpen(true)}>✎ تعديل البيانات</Button>
-              <Button variant="outline" onClick={() => setMoveOpen(true)}>↔ نقل إلى فريقٍ آخر</Button>
-              <Button variant="danger"  onClick={() => setDelOpen(true)}>🗑 إخراجٌ من الرحلة</Button>
+              {/* أزرار التعديل/النقل/الإخراج لمن يملك صلاحيّة إدارة الطلاب فقط —
+                  والخادم يتحقّق من الصلاحيّة ذاتها في كلّ عمليّة (لا يكفي إخفاء الزر). */}
+              {canManage && <>
+                <Button variant="outline" onClick={() => setEditOpen(true)}>✎ تعديل البيانات</Button>
+                <Button variant="outline" onClick={() => setMoveOpen(true)}>↔ نقل إلى فريقٍ آخر</Button>
+                <Button variant="danger"  onClick={() => setDelOpen(true)}>🗑 إخراجٌ من الرحلة</Button>
+              </>}
             </div>
           </Card>
         </div>
@@ -221,8 +278,29 @@ export default function StudentDetail() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="جهة الطوارئ" value={form.emergencyContact} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} />
-            <Field label="رقم الطوارئ" value={form.emergencyPhone} onChange={e => setForm({ ...form, emergencyPhone: e.target.value })} />
+            <Field label="رقم وليّ الأمر" value={form.emergencyPhone} onChange={e => setForm({ ...form, emergencyPhone: e.target.value })} />
           </div>
+          {/* رقم الهوية حقلٌ حسّاس — يظهر للأمير/نائبه فقط، والخادم يمنع تعديله من غيرهم. */}
+          {canApprove && (
+            <Field
+              label="رقم الهويّة"
+              inputMode="numeric"
+              value={form.nationalId}
+              onChange={e => setForm({ ...form, nationalId: e.target.value })}
+              placeholder="غير مسجَّل"
+            />
+          )}
+          {/* إجابات الحقول المخصّصة القابلة للتحرير. */}
+          {customFields.length > 0 && (
+            <div className="grid gap-3 border-t border-line pt-4">
+              <span className="text-[12px] tracking-[.12em] text-text-3">تفاصيل التسجيل</span>
+              {customFields.map(f => (
+                f.type === "نص طويل"
+                  ? <TextArea key={f.key} label={f.label} value={answers[f.key] ?? ""} onChange={e => setAnswers({ ...answers, [f.key]: e.target.value })} />
+                  : <Field key={f.key} label={f.label} value={answers[f.key] ?? ""} onChange={e => setAnswers({ ...answers, [f.key]: e.target.value })} />
+              ))}
+            </div>
+          )}
         </form>
       </Modal>
 

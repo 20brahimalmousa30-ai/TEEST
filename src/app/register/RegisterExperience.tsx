@@ -67,6 +67,16 @@ export function RegisterExperience() {
     const phone = get("phone");
     if (!name || !phone) { setError("الاسم والجوّال مطلوبان."); return; }
 
+    // إجابات الحقول المخصّصة (الديناميكيّة) — كلُّ حقلٍ نشطٍ لا يقابله عمودٌ ثابت
+    // في جدول الطلاب ولا هو صورة، كي لا تُفقَد إجابات ما يضيفه الأمير من أسئلة.
+    const STANDARD_KEYS = new Set(["name", "phone", "grade", "section", "photo", "emergN", "emergP", "nid"]);
+    const regAnswers: Record<string, string> = {};
+    for (const f of activeFields) {
+      if (STANDARD_KEYS.has(f.key)) continue;
+      const v = get(f.key);
+      if (v) regAnswers[f.key] = v;
+    }
+
     registerStudent({
       name,
       phone,
@@ -76,6 +86,7 @@ export function RegisterExperience() {
       emergencyPhone: get("emergP") || "—",
       photoDataUrl: get("photo") || undefined,
       nationalId: get("nid") || undefined,
+      regAnswers,
     });
     setSubmittedName(name);
     setSubmitted(true);

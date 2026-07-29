@@ -70,6 +70,7 @@ export type Student = {
   receiptStatus?: "PENDING" | "APPROVED" | "REJECTED"; // حالة مراجعة الإيصال
   receiptAmount?: number;            // المبلغ المُصرَّح به في الإيصال
   receiptSubmittedAt?: string;       // ISO date لرفع الإيصال
+  regAnswers?: Record<string, string>; // إجابات حقول التسجيل المخصّصة (مفتاح الحقل → الإجابة)
 };
 
 export type Invoice = {

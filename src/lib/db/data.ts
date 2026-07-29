@@ -29,7 +29,7 @@ const ADMIN = ["PRINCE", "DEPUTY_PRINCE"];
 const STUDENT_LEAN_COLUMNS =
   "id,name,national_id_masked,national_id,phone,grade,section,team_id,payment_status," +
   "paid_amount,total_amount,points,emergency_contact,emergency_phone,attendance," +
-  "approval_status,registered_at,access_code,receipt_status,receipt_amount,receipt_submitted_at";
+  "approval_status,registered_at,access_code,receipt_status,receipt_amount,receipt_submitted_at,reg_answers";
 
 /** كلُّ أعمدة الإعدادات **ما عدا** logo_url (base64 ثقيل يُجلَب عند الطلب). */
 const APP_SETTINGS_LEAN_COLUMNS =
@@ -336,6 +336,7 @@ export async function dbAddStudent(input: Omit<Student, "id" | "nationalIdMasked
 export async function dbRegisterStudent(input: {
   name: string; phone: string; grade: string; section: Student["section"];
   emergencyContact: string; emergencyPhone: string; photoDataUrl?: string; nationalId?: string;
+  regAnswers?: Record<string, string>;
 }): Promise<Student> {
   // مسارٌ عامٌّ (تسجيل الزائر) — لا يتطلّب جلسة، لكن نتحقّق من الصورة والمدخلات.
   assertValidImage(input.photoDataUrl);
@@ -361,6 +362,7 @@ export async function dbRegisterStudent(input: {
     approvalStatus: "PENDING",
     registeredAt: new Date().toISOString(),
     photoDataUrl: input.photoDataUrl,
+    regAnswers: input.regAnswers && Object.keys(input.regAnswers).length ? input.regAnswers : undefined,
   });
   const { data } = await getSupabase().from("students").insert(row).select("*").single();
   return rowToStudent(data);
@@ -407,9 +409,24 @@ export async function dbRejectStudent(id: string) {
   await getSupabase().from("students").update(studentToRow({ approvalStatus: "REJECTED" })).eq("id", id);
 }
 export async function dbUpdateStudent(id: string, patch: Partial<Student>) {
-  await requirePermission("students");
+  const session = await requirePermission("students");
   assertValidImage(patch.photoDataUrl);
-  await getSupabase().from("students").update(studentToRow(patch)).eq("id", id);
+  const db = getSupabase();
+  const row = studentToRow(patch);
+  // رقم الهوية الحقيقيّ حسّاسٌ — لا يعدّله إلاّ الإدارة (الأمير/نائبه)، لا المشرف،
+  // ولو صاغ طلباً مباشراً. نُجرّده هنا في الخادم كخطّ دفاعٍ ثانٍ خلف إخفاء الحقل.
+  if (!ADMIN.includes(session.role)) {
+    delete (row as Record<string, unknown>).national_id;
+    delete (row as Record<string, unknown>).national_id_masked;
+  }
+  if (Object.keys(row).length) await db.from("students").update(row).eq("id", id);
+  // تغيير جوّال الطالب يجب أن يُحدّث حسابَ دخوله المرتبط (BENEFICIARY) أيضاً،
+  // وإلاّ انكسر تسجيل دخوله (الجوّال هو معرّف الدخول). الرمز يبقى كما هو (مُشفَّراً).
+  if (patch.phone !== undefined && patch.phone.trim()) {
+    await db.from("profiles")
+      .update({ phone: patch.phone.trim() })
+      .eq("student_id", id).eq("role", "BENEFICIARY");
+  }
 }
 export async function dbSetStudentPhoto(id: string, dataUrl: string) {
   // المستفيدُ يرفع صورته الذاتيّة (من /me)، أو أيّ عضو طاقم.

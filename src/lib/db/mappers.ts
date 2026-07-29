@@ -97,6 +97,7 @@ export const rowToStudent = (r: any): Student => ({
   receiptStatus: r.receipt_status ?? undefined,
   receiptAmount: r.receipt_amount ?? undefined,
   receiptSubmittedAt: r.receipt_submitted_at ?? undefined,
+  regAnswers: r.reg_answers ?? undefined,
 });
 
 export const studentToRow = (s: Partial<Student>) => ({
@@ -123,6 +124,7 @@ export const studentToRow = (s: Partial<Student>) => ({
   ...(s.receiptStatus !== undefined && { receipt_status: s.receiptStatus }),
   ...(s.receiptAmount !== undefined && { receipt_amount: s.receiptAmount }),
   ...(s.receiptSubmittedAt !== undefined && { receipt_submitted_at: s.receiptSubmittedAt }),
+  ...(s.regAnswers !== undefined && { reg_answers: s.regAnswers }),
 });
 
 export const rowToInvoice = (r: any): Invoice => ({

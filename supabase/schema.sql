@@ -381,3 +381,10 @@ alter table app_settings add column if not exists logo_version bigint not null d
 -- ويختار نمط الحركة لكلّ صفحة. تُخزَّن كخريطة JSON:
 --   { "<pageKey>": { "phrases": ["..."], "style": "slide|float|fade", "enabled": true } }
 alter table app_settings add column if not exists page_marquees jsonb;
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  إجابات حقول التسجيل المخصّصة (الديناميكيّة) — تُخزَّن كخريطة { key: value }
+--  كي لا تُفقَد إجابات الحقول التي يضيفها الأمير (عبر reg_fields) والتي لا
+--  يقابلها عمودٌ ثابت في جدول الطلاب. تُعرَض في صفحة تفاصيل الطالب.
+--  ⚠️ شغّل هذا السطر في Supabase قبل نشر الشيفرة التي تعتمد عليه.
+alter table students add column if not exists reg_answers jsonb;

@@ -102,7 +102,7 @@ export type StoreActions = {
   // Students
   addStudent(input: Omit<Student, "id" | "nationalIdMasked" | "points" | "attendance">): void;
   /** Public registration path — always creates an APPROVAL-pending record */
-  registerStudent(input: { name: string; phone: string; grade: string; section: Student["section"]; emergencyContact: string; emergencyPhone: string; photoDataUrl?: string; nationalId?: string }): Student;
+  registerStudent(input: { name: string; phone: string; grade: string; section: Student["section"]; emergencyContact: string; emergencyPhone: string; photoDataUrl?: string; nationalId?: string; regAnswers?: Record<string, string> }): Student;
   approveStudent(id: string, teamId: string): void;
   rejectStudent(id: string): void;
   updateStudent(id: string, patch: Partial<Student>): void;
@@ -266,6 +266,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         approvalStatus: "PENDING",
         registeredAt: new Date().toISOString(),
         photoDataUrl: input.photoDataUrl,
+        regAnswers: input.regAnswers && Object.keys(input.regAnswers).length ? input.regAnswers : undefined,
       };
       update(s => ({ students: [...s.students, record] }));
       persist(() => dbRegisterStudent(input));
