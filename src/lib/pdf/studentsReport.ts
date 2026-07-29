@@ -120,7 +120,7 @@ function theadHtml(): string {
         ${th("الاسم", "right")}
         ${th("رقم الجوّال", "center", "104px")}
         ${th("رقم الهوية", "center", "100px")}
-        ${th("الحالة", "center", "128px")}
+        ${th("رقم جوال ولي الأمر", "center", "104px")}
         ${th("حالة السداد", "center", "130px")}
       </tr>
     </thead>`;
@@ -128,7 +128,6 @@ function theadHtml(): string {
 
 /** صفٌّ واحد في الجدول — ٦ أعمدة، ارتفاعٌ ثابت. */
 function rowHtml(s: Student, idx: number): string {
-  const st = statusMeta(s);
   const pay = payMeta(s);
   const zebra = idx % 2 === 0 ? "#FFFFFF" : BRAND.paper;
   const td = (inner: string, align = "center", extra = "") =>
@@ -145,7 +144,7 @@ function rowHtml(s: Student, idx: number): string {
       ${td(nameCell, "right")}
       ${td(`<span dir="ltr" style="unicode-bidi:plaintext">${esc(s.phone)}</span>`)}
       ${td(nidCell(s))}
-      ${td(pill(st.label, st.color))}
+      ${td(`<span dir="ltr" style="unicode-bidi:plaintext">${esc(s.emergencyPhone)}</span>`)}
       ${td(`${pill(pay.label, pay.color)}<div style="font-size:9.5px;color:${BRAND.sub};margin-top:3px">${sar(s.paidAmount)} / ${sar(s.totalAmount)}</div>`)}
     </tr>`;
 }
@@ -169,7 +168,7 @@ function buildPageShell(stage: HTMLElement, logo: string, title: string, dateStr
   const page = document.createElement("div");
   page.style.cssText =
     `width:${PAGE_W}px;height:${PAGE_H}px;box-sizing:border-box;padding:${PAD}px;` +
-    `background:#fff;font-family:var(--font-cairo),'IBM Plex Sans Arabic','Tajawal',sans-serif;` +
+    `background:#fff;font-family:'Cairo','IBM Plex Sans Arabic','Tajawal',sans-serif;` +
     `direction:rtl;display:flex;flex-direction:column`;
 
   const header = document.createElement("div");
