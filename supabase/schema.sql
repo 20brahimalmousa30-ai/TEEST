@@ -26,6 +26,7 @@ create table if not exists supervisors (
   id                 text primary key,
   name               text not null,
   national_id_masked text not null default '',
+  national_id        text,
   phone              text not null default '',
   email              text not null default '',
   team_ids           text[] not null default '{}',
@@ -388,3 +389,9 @@ alter table app_settings add column if not exists page_marquees jsonb;
 --  يقابلها عمودٌ ثابت في جدول الطلاب. تُعرَض في صفحة تفاصيل الطالب.
 --  ⚠️ شغّل هذا السطر في Supabase قبل نشر الشيفرة التي تعتمد عليه.
 alter table students add column if not exists reg_answers jsonb;
+
+-- رقم الهوية الحقيقيّ للمشرف — حسّاسٌ يُكشف للأمير/نائبه فقط (يُجرَّد من لقطة غيرهم
+--  في data.ts). القناع القديم (national_id_masked) كان عشوائياً مضلِّلاً؛ من الآن
+--  يُعتمَد هذا العمود، ومن لا رقم حقيقيّ له يُعرَض «غير مسجَّل».
+--  ⚠️ شغّل هذا السطر في Supabase قبل نشر الشيفرة التي تعتمد عليه.
+alter table supervisors add column if not exists national_id text;

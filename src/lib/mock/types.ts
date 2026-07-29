@@ -26,7 +26,8 @@ export type Committee = {
 export type Supervisor = {
   id: string;
   name: string;
-  nationalIdMasked: string;
+  nationalIdMasked: string;          // قناعٌ عشوائيّ قديم (لا يُعتمد عليه) — للتوافق فقط
+  nationalId?: string;               // رقم الهوية الحقيقيّ — للأمير/نائبه فقط
   phone: string;
   email: string;
   accessCode?: string;               // رمز دخول المشرف — يظهر للأمير

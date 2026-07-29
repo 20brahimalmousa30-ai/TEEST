@@ -115,7 +115,7 @@ export type StoreActions = {
   /** البند ١٠: يعتمد الأمير الإيصال أو يرفضه */
   reviewReceipt(id: string, approve: boolean): void;
   // Supervisors
-  addSupervisor(name: string, phone: string, email: string, teamIds: string[], committeeIds: string[], permissions: string[]): void;
+  addSupervisor(name: string, phone: string, email: string, teamIds: string[], committeeIds: string[], permissions: string[], nationalId?: string): void;
   /** استيراد جماعي من ملف Excel/CSV */
   importSupervisors(rows: { name: string; phone: string; email: string }[]): void;
   updateSupervisor(id: string, patch: Partial<Supervisor>): void;
@@ -342,21 +342,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       persist(() => dbReviewReceipt(id, approve));
     },
 
-    addSupervisor(name, phone, email, teamIds, committeeIds, permissions) {
+    addSupervisor(name, phone, email, teamIds, committeeIds, permissions, nationalId = "") {
       const code = secureCode();
+      const nid = nationalId.trim();
       update(s => ({
         supervisors: [...s.supervisors, {
           id: uid("s"), name, phone, email, teamIds, committeeIds, permissions, accessCode: code,
-          nationalIdMasked: "••••••" + Math.floor(1000 + Math.random() * 8999),
+          nationalId: nid || undefined,
+          nationalIdMasked: nid ? "••••••" + nid.slice(-4) : "",
         }],
       }));
-      persist(() => dbAddSupervisor(name, phone, email, teamIds, committeeIds, permissions, code));
+      persist(() => dbAddSupervisor(name, phone, email, teamIds, committeeIds, permissions, code, nid));
     },
     importSupervisors(rows) {
       update(s => ({
         supervisors: [...s.supervisors, ...rows.map(r => ({
           id: uid("s"), name: r.name, phone: r.phone, email: r.email, teamIds: [], committeeIds: [], permissions: [],
-          nationalIdMasked: "••••••" + Math.floor(1000 + Math.random() * 8999),
+          nationalIdMasked: "",
         }))],
       }));
       persist(() => dbImportSupervisors(rows));

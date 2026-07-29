@@ -251,11 +251,16 @@ export async function loadAllData(): Promise<State> {
       if (!isAdmin) st.nationalId = undefined;
       return st;
     }),
-    supervisors:    (supervisors.data ?? []).map(r => ({
-      ...rowToSupervisor(r),
-      teamIds: supTeams[r.id] ?? [],
-      committeeIds: supComms[r.id] ?? [],
-    })),
+    supervisors:    (supervisors.data ?? []).map(r => {
+      const sup = {
+        ...rowToSupervisor(r),
+        teamIds: supTeams[r.id] ?? [],
+        committeeIds: supComms[r.id] ?? [],
+      };
+      // رقم الهوية الحقيقيّ للمشرف حسّاسٌ — للإدارة فقط؛ نُجرّده من لقطة غيرهم.
+      if (!isAdmin) sup.nationalId = undefined;
+      return sup;
+    }),
     committees:     (committees.data ?? []).map(r => ({
       ...rowToCommittee(r),
       supervisorIds: commSups[r.id] ?? [],
@@ -496,11 +501,16 @@ async function bumpTeamCount(teamId: string, delta: number) {
 
 /* ─────────────────────────── المشرفون ─────────────────────────── */
 
-export async function dbAddSupervisor(name: string, phone: string, email: string, teamIds: string[], committeeIds: string[], permissions: string[], code: string) {
+export async function dbAddSupervisor(name: string, phone: string, email: string, teamIds: string[], committeeIds: string[], permissions: string[], code: string, nationalId = "") {
   await requireAdmin();
   const id = uid("s");
+  const nid = nationalId.trim();
   await getSupabase().from("supervisors").insert(
-    supervisorToRow({ id, name, phone, email, permissions, nationalIdMasked: maskNid(), accessCode: code }),
+    supervisorToRow({
+      id, name, phone, email, permissions, accessCode: code,
+      nationalId: nid || undefined,
+      nationalIdMasked: nid ? "••••••" + nid.slice(-4) : "",
+    }),
   );
   await setSupervisorTargets(id, "team", teamIds);
   await setSupervisorTargets(id, "committee", committeeIds);
@@ -515,7 +525,8 @@ export async function dbImportSupervisors(rows: { name: string; phone: string; e
   await requireAdmin();
   if (!rows.length) return 0;
   const payload = rows.map(r =>
-    supervisorToRow({ id: uid("s"), name: r.name, phone: r.phone, email: r.email, nationalIdMasked: maskNid() }),
+    // الاستيراد لا يحمل رقم هوية — يُترك فارغاً فيُعرَض «غير مسجَّل» (لا قناعٌ وهمي).
+    supervisorToRow({ id: uid("s"), name: r.name, phone: r.phone, email: r.email, nationalIdMasked: "" }),
   );
   const { error } = await getSupabase().from("supervisors").insert(payload);
   if (error) throw error;
@@ -524,6 +535,12 @@ export async function dbImportSupervisors(rows: { name: string; phone: string; e
 export async function dbUpdateSupervisor(id: string, patch: Partial<Supervisor>) {
   await requireAdmin();
   const row = supervisorToRow(patch);
+  // عند تعديل رقم الهوية الحقيقيّ، نُزامن القناع معه (أو نُفرغه إن مُسِح).
+  if (patch.nationalId !== undefined) {
+    const nid = patch.nationalId.trim();
+    (row as Record<string, unknown>).national_id = nid || null;
+    (row as Record<string, unknown>).national_id_masked = nid ? "••••••" + nid.slice(-4) : "";
+  }
   if (Object.keys(row).length) await getSupabase().from("supervisors").update(row).eq("id", id);
   if (patch.teamIds !== undefined) await setSupervisorTargets(id, "team", patch.teamIds);
   if (patch.committeeIds !== undefined) await setSupervisorTargets(id, "committee", patch.committeeIds);

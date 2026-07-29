@@ -7,15 +7,19 @@ import { Button } from "@/components/ui/Button";
 import { Modal, Confirm } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Field";
 import { useStore } from "@/lib/store/StoreProvider";
+import { useSession } from "@/lib/auth/session";
 import type { Supervisor } from "@/lib/mock/types";
 import { SUPERVISOR_PERMISSIONS } from "@/lib/mock/types";
 import { toCSV, parseCSV, downloadCSV } from "@/lib/spreadsheet";
 
-const empty = { name: "", phone: "", email: "", teamIds: [] as string[], committeeIds: [] as string[], permissions: [] as string[] };
+const empty = { name: "", phone: "", email: "", nationalId: "", teamIds: [] as string[], committeeIds: [] as string[], permissions: [] as string[] };
 
 export default function SupervisorsPage() {
   useEffect(() => { document.title = "المشرفون — معالي محافظة بلّسمر"; }, []);
   const { supervisors, teams, committees, addSupervisor, updateSupervisor, deleteSupervisor, importSupervisors } = useStore();
+  const { session } = useSession();
+  // رقم الهوية الحقيقيّ للمشرف — للأمير/نائبه فقط (عرضاً وتحريراً).
+  const canApprove = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
   const [modalId, setModalId] = useState<"new" | string | null>(null);
   const [toDelete, setToDelete] = useState<Supervisor | null>(null);
   const [form, setForm] = useState({ ...empty });
@@ -64,7 +68,7 @@ export default function SupervisorsPage() {
     setModalId("new");
   }
   function openEdit(s: Supervisor) {
-    setForm({ name: s.name, phone: s.phone, email: s.email, teamIds: [...s.teamIds], committeeIds: [...s.committeeIds], permissions: [...(s.permissions ?? [])] });
+    setForm({ name: s.name, phone: s.phone, email: s.email, nationalId: s.nationalId ?? "", teamIds: [...s.teamIds], committeeIds: [...s.committeeIds], permissions: [...(s.permissions ?? [])] });
     setModalId(s.id);
   }
   function toggleFrom(list: "teamIds" | "committeeIds" | "permissions", id: string) {
@@ -75,10 +79,12 @@ export default function SupervisorsPage() {
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) return;
+    // رقم الهوية يُدخله/يُعدّله الأمير فقط؛ لغيره لا نُرسل الحقل إطلاقاً.
     if (modalId === "new") {
-      addSupervisor(form.name.trim(), form.phone.trim(), form.email.trim(), form.teamIds, form.committeeIds, form.permissions);
+      addSupervisor(form.name.trim(), form.phone.trim(), form.email.trim(), form.teamIds, form.committeeIds, form.permissions, canApprove ? form.nationalId.trim() : "");
     } else if (modalId) {
-      updateSupervisor(modalId, form);
+      const { nationalId, ...rest } = form;
+      updateSupervisor(modalId, canApprove ? { ...rest, nationalId: nationalId.trim() } : rest);
     }
     setModalId(null);
   }
@@ -132,7 +138,11 @@ export default function SupervisorsPage() {
                     <div className="grid h-8 w-8 place-items-center rounded-full bg-accent text-[12px] font-semibold" style={{ color: "#F4EEE2" }}>{sup.name[0]}</div>
                     <div>
                       <div className="text-text">{sup.name}</div>
-                      <div className="num mt-0.5 text-[11px] text-text-3">{sup.nationalIdMasked}</div>
+                      {canApprove && (
+                        <div className="num mt-0.5 text-[11px] text-text-3">
+                          {sup.nationalId ? sup.nationalId : <span className="text-text-3/70">غير مسجَّل</span>}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </td>
@@ -190,6 +200,15 @@ export default function SupervisorsPage() {
             <Field label="الجوّال" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
             <Field label="البريد" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="name@maali.abha" />
           </div>
+          {canApprove && (
+            <Field
+              label="رقم الهويّة"
+              inputMode="numeric"
+              value={form.nationalId}
+              onChange={e => setForm({ ...form, nationalId: e.target.value })}
+              placeholder="غير مسجَّل"
+            />
+          )}
           <div>
             <div className="mb-2 text-[12px] tracking-[.12em] text-text-3">الفرق ({form.teamIds.length})</div>
             <div className="grid max-h-32 grid-cols-2 gap-2 overflow-y-auto rounded border border-line p-3 text-[13px]">
