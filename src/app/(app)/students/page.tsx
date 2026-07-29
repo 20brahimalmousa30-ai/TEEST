@@ -52,7 +52,7 @@ export default function StudentsPage() {
     if (payFilter !== "ALL" && s.paymentStatus !== payFilter) return false;
     if (q.trim()) {
       const needle = q.trim();
-      if (!s.name.includes(needle) && !s.nationalIdMasked.includes(needle) && !s.phone.includes(needle)) return false;
+      if (!s.name.includes(needle) && !s.nationalIdMasked.includes(needle) && !(s.nationalId ?? "").includes(needle) && !s.phone.includes(needle)) return false;
     }
     return true;
   }), [approvedAll, teamFilter, payFilter, q]);
@@ -357,7 +357,11 @@ export default function StudentsPage() {
                 <tr key={s.id} className="border-b border-line hover:bg-bg-raised">
                   <td className="px-5 py-3">
                     <Link href={`/students/${s.id}`} className="text-text hover:text-accent">{s.name}</Link>
-                    <span className="num ms-2 text-[11px] text-text-3">{s.nationalIdMasked}</span>
+                    {canApprove
+                      ? (s.nationalId?.trim()
+                          ? <span className="num ms-2 text-[11px] text-text-3">{s.nationalId}</span>
+                          : <span className="ms-2 text-[11px] italic text-text-3">غير مسجَّل</span>)
+                      : <span className="num ms-2 text-[11px] text-text-3">{s.nationalIdMasked}</span>}
                   </td>
                   <td className="num px-5 py-3 text-text-2">{s.phone}</td>
                   <td className="px-5 py-3">

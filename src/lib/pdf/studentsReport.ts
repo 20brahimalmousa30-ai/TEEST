@@ -111,6 +111,17 @@ function pill(label: string, color: string): string {
 /** ارتفاعٌ ثابتٌ لكلّ صفّ حتّى لا تتفاوت الصفوف مهما طال النصّ. */
 const ROW_H = 34;
 
+/** حجم خطّ الاسم يتقلّص تلقائياً مع طول الاسم — فيظهر كاملاً بلا اقتصاصٍ
+ *  بثلاث نقاط، مع بقاء الصفّ في سطرٍ واحدٍ وارتفاعٍ ثابت. */
+function nameFontSize(name: string): number {
+  const n = name.trim().length;
+  if (n <= 24) return 11.5;
+  if (n <= 30) return 10.5;
+  if (n <= 36) return 9.5;
+  if (n <= 44) return 8.5;
+  return 7.5;
+}
+
 /** رأس الجدول (thead) بألوان الهُويّة — ٦ أعمدةٍ أساسيّة فقط. */
 function theadHtml(): string {
   const th = (t: string, align = "center", w = "auto") =>
@@ -135,10 +146,13 @@ function rowHtml(s: Student, idx: number): string {
   const td = (inner: string, align = "center", extra = "") =>
     `<td style="height:${ROW_H}px;padding:4px 8px;font-size:11.5px;color:${BRAND.ink};` +
     `text-align:${align};border-bottom:1px solid ${BRAND.line};vertical-align:middle;${extra}">${inner}</td>`;
-  // الاسم قد يطول → نمنع الالتفاف ونقصّ بثلاث نقاطٍ حفاظاً على ثبات الارتفاع.
+  // الاسم قد يطول → نُصغّر الخطّ تلقائياً ونسمح بالالتفاف حتّى سطرين داخل الخليّة
+  // (بلا تجاوزٍ للأعمدة المجاورة)، مع بقاء ارتفاع الصفّ ثابتاً. الأسماء الرباعيّة
+  // المعتادة تظهر كاملةً بلا اقتصاص؛ الطويلة جداً فقط قد تُلمَّح بثلاث نقاطٍ في آخرها.
   const nameCell =
-    `<span style="display:block;font-weight:600;white-space:nowrap;overflow:hidden;` +
-    `text-overflow:ellipsis;max-width:100%">${esc(s.name)}</span>`;
+    `<span style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;` +
+    `overflow:hidden;font-weight:600;line-height:1.2;word-break:break-word;` +
+    `font-size:${nameFontSize(s.name)}px">${esc(s.name)}</span>`;
 
   return `
     <tr style="background:${zebra}">

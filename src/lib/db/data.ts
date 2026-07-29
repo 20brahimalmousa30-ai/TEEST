@@ -239,10 +239,18 @@ export async function loadAllData(): Promise<State> {
   const allInvoices = (invoices.data ?? []).map(rowToInvoice);
   const trashIds = new Set((invoices.data ?? []).filter(r => r.in_trash).map(r => r.id));
 
+  // رقم الهوية الحقيقيّ (national_id) حسّاسٌ — يُكشف للإدارة فقط (الأمير/نائبه).
+  // نُجرّده من لقطة المشرفين هنا (لا في الواجهة فقط) حتّى لا يصل لأجهزتهم أصلاً.
+  const isAdmin = ADMIN.includes(session.role);
+
   return {
     ...base,
     teams:          (teams.data ?? []).map(rowToTeam),
-    students:       (students.data ?? []).map(rowToStudent),
+    students:       (students.data ?? []).map(r => {
+      const st = rowToStudent(r);
+      if (!isAdmin) st.nationalId = undefined;
+      return st;
+    }),
     supervisors:    (supervisors.data ?? []).map(r => ({
       ...rowToSupervisor(r),
       teamIds: supTeams[r.id] ?? [],

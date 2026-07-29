@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Modal, Confirm } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Field";
 import { useStore } from "@/lib/store/StoreProvider";
+import { useSession } from "@/lib/auth/session";
 import { downloadCSV } from "@/lib/download";
 import { fileToDataUrl, extractDominantColor } from "@/lib/image";
 import type { Student } from "@/lib/mock/types";
@@ -22,6 +23,9 @@ export default function TeamDetail() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { teams, students, supervisors, deleteTeam, addStudent, updateTeam } = useStore();
+  const { session } = useSession();
+  // رقم الهوية الكامل للإدارة فقط؛ غيرهم يرى القناع.
+  const canApprove = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [delOpen, setDelOpen] = useState(false);
@@ -148,7 +152,7 @@ export default function TeamDetail() {
                   <div className="text-[14px] text-text">
                     <Link href={`/students/${st.id}`} className="hover:text-accent">{st.name}</Link>
                   </div>
-                  <div className="text-[11.5px] text-text-3">{st.grade} · {st.section} · <span className="num">{st.nationalIdMasked}</span></div>
+                  <div className="text-[11.5px] text-text-3">{st.grade} · {st.section} · <span className="num">{canApprove ? (st.nationalId?.trim() || st.nationalIdMasked) : st.nationalIdMasked}</span></div>
                 </div>
                 <span className="num text-[12.5px] text-text-2">{st.points} نقطة</span>
                 <Pill variant={st.paymentStatus === "PAID" ? "ok" : st.paymentStatus === "PARTIAL" ? "warn" : "critical"}>
