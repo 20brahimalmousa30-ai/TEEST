@@ -2,10 +2,12 @@
  *
  * لماذا هذا النهج؟ مكتبات PDF في Node/المتصفّح (jsPDF, pdfkit…) لا تُشكّل
  * الحروف العربيّة ولا تدعم RTL افتراضياً — فتظهر الحروف مبعثرة/معكوسة.
- * الحلّ الأضمن: نبني التقرير كـ HTML (محرّك المتصفّح يُشكّل العربيّة بشكل
- * مثاليّ)، ثم نُحوّل كلّ صفحةٍ إلى صورةٍ عالية الدقّة عبر html2canvas،
- * ونجمّعها في ملفّ PDF عبر jsPDF. نستخدم أنماطاً داخليّة (ألوان hex صريحة)
- * لتفادي دوالّ ألوان Tailwind الحديثة (oklch) التي لا يفهمها html2canvas. */
+ * كذلك html2canvas يعكس العربيّة ويقطّعها (ثغرة معروفة). الحلّ الأضمن: نبني
+ * التقرير كـ HTML، ثمّ نرسّم كلّ صفحةٍ عبر SVG `foreignObject` الذي يستخدم
+ * محرّك رسم النصّ الأصليّ في المتصفّح — فيُشكّل العربيّة ويطبّق RTL بشكلٍ
+ * مثاليّ — ثمّ نجمّع الصور في ملفّ PDF عبر jsPDF. نُضمّن الشعار وخطّ Cairo
+ * كـ data URL داخل الـ SVG كي لا يتلوّث الـ canvas ويبقى قابلاً للتصدير.
+ * نستخدم أنماطاً داخليّة بألوان hex صريحة (لا oklch) لثبات العرض. */
 
 import { sar, arDate } from "@/lib/format";
 import type { Student, Team, Supervisor } from "@/lib/mock/types";
@@ -120,7 +122,7 @@ function theadHtml(): string {
         ${th("الاسم", "right")}
         ${th("رقم الجوّال", "center", "104px")}
         ${th("رقم الهوية", "center", "100px")}
-        ${th("الحالة", "center", "128px")}
+        ${th("رقم جوال ولي الأمر", "center", "104px")}
         ${th("حالة السداد", "center", "130px")}
       </tr>
     </thead>`;
@@ -128,7 +130,6 @@ function theadHtml(): string {
 
 /** صفٌّ واحد في الجدول — ٦ أعمدة، ارتفاعٌ ثابت. */
 function rowHtml(s: Student, idx: number): string {
-  const st = statusMeta(s);
   const pay = payMeta(s);
   const zebra = idx % 2 === 0 ? "#FFFFFF" : BRAND.paper;
   const td = (inner: string, align = "center", extra = "") =>
@@ -145,7 +146,7 @@ function rowHtml(s: Student, idx: number): string {
       ${td(nameCell, "right")}
       ${td(`<span dir="ltr" style="unicode-bidi:plaintext">${esc(s.phone)}</span>`)}
       ${td(nidCell(s))}
-      ${td(pill(st.label, st.color))}
+      ${td(`<span dir="ltr" style="unicode-bidi:plaintext">${esc(s.emergencyPhone)}</span>`)}
       ${td(`${pill(pay.label, pay.color)}<div style="font-size:9.5px;color:${BRAND.sub};margin-top:3px">${sar(s.paidAmount)} / ${sar(s.totalAmount)}</div>`)}
     </tr>`;
 }
@@ -163,13 +164,13 @@ function footerHtml(pageNo: number, pageCount: number): string {
  *  يُلحِق الصفحة بـ`stage` الحيّ **قبل** القياس؛ فبدونه تكون offsetHeight للعناصر
  *  صفراً (عنصرٌ خارج DOM لا أبعاد له)، فيُحسَب `avail` أكبرَ من الحقيقة وتفيض
  *  صفوفٌ خارج الصفحة فتُقصّ عند الرَّسم. */
-function buildPageShell(stage: HTMLElement, logo: string, title: string, dateStr: string): {
+function buildPageShell(stage: HTMLElement, logo: string, title: string, dateStr: string, fontFamily: string): {
   page: HTMLDivElement; tbody: HTMLTableSectionElement; footerSlot: HTMLDivElement; avail: number;
 } {
   const page = document.createElement("div");
   page.style.cssText =
     `width:${PAGE_W}px;height:${PAGE_H}px;box-sizing:border-box;padding:${PAD}px;` +
-    `background:#fff;font-family:var(--font-cairo),'IBM Plex Sans Arabic','Tajawal',sans-serif;` +
+    `background:#fff;font-family:${fontFamily};` +
     `direction:rtl;display:flex;flex-direction:column`;
 
   const header = document.createElement("div");
@@ -205,6 +206,89 @@ function buildPageShell(stage: HTMLElement, logo: string, title: string, dateStr
   return { page, tbody, footerSlot, avail };
 }
 
+/** يقرأ عائلة خطّ Cairo الفعليّة (الاسم المُجزّأ الذي يولّده next/font) من متغيّر
+ *  CSS ‏`--font-cairo` المُعرَّف على الجذر. نُرجع القيمة كاملةً + احتياطيّات عربيّة. */
+function resolveArabicFontFamily(): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue("--font-cairo").trim();
+  const base = v || "Cairo";
+  return `${base}, 'IBM Plex Sans Arabic', 'Tajawal', sans-serif`;
+}
+
+/** يجمع قواعد ‎@font-face الخاصّة بـ Cairo من صفحات الأنماط (نفس الأصل — يستضيفها
+ *  next/font ذاتياً)، ثمّ يُضمّن ملفّ الخطّ كـ data URL داخل نصّ ‎@font-face جاهزٍ
+ *  للحقن في الـ SVG. لماذا؟ صورة الـ SVG تُرسَم في سياقٍ معزول لا يرى خطوط الصفحة
+ *  المحمّلة؛ فبدون تضمين بايتات الخطّ لن يُشكَّل العربيّ ويظهر باحتياطيّ النظام. */
+async function collectArabicFontFaceCss(): Promise<string> {
+  type Face = { family: string; weight: string; style: string; url: string };
+  const faces: Face[] = [];
+  for (const sheet of Array.from(document.styleSheets)) {
+    let rules: CSSRuleList;
+    try { rules = sheet.cssRules; } catch { continue; } // صفحة أنماطٍ من أصلٍ مختلف
+    for (const r of Array.from(rules)) {
+      if (!(r instanceof CSSFontFaceRule)) continue;
+      const family = r.style.getPropertyValue("font-family");
+      if (!/cairo/i.test(family)) continue;
+      const src = r.style.getPropertyValue("src");
+      const m = src.match(/url\(\s*["']?([^"')]+\.woff2?)["']?\s*\)/i);
+      if (!m) continue; // احتياطيّ الميتريكس (local) بلا ملفّ — نتجاهله
+      faces.push({
+        family,
+        weight: r.style.getPropertyValue("font-weight") || "400",
+        style: r.style.getPropertyValue("font-style") || "normal",
+        url: m[1],
+      });
+    }
+  }
+  const parts = await Promise.all(faces.map(async f => {
+    try {
+      const res = await fetch(f.url);
+      const buf = await res.blob();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const rd = new FileReader();
+        rd.onload = () => resolve(String(rd.result));
+        rd.onerror = () => reject(rd.error);
+        rd.readAsDataURL(buf);
+      });
+      return `@font-face{font-family:${f.family};font-style:${f.style};` +
+        `font-weight:${f.weight};font-display:block;src:url(${dataUrl}) format('woff2')}`;
+    } catch { return ""; }
+  }));
+  return parts.join("");
+}
+
+/** يُرسّم عنصر صفحةٍ إلى canvas عبر SVG ‏`foreignObject` — أي بمحرّك رسم النصّ
+ *  الأصليّ في المتصفّح، الذي يُشكّل العربيّة ويطبّق اتجاه RTL بشكلٍ صحيح (على عكس
+ *  html2canvas الذي يعكس الحروف ويقطّعها). كلّ الموارد مُضمّنة (شعار data URL +
+ *  خطّ data URL) فلا يتلوّث الـ canvas ويبقى قابلاً للتصدير عبر toDataURL. */
+async function rasterizePageViaSvg(page: HTMLElement, fontCss: string, scale = 2): Promise<HTMLCanvasElement> {
+  const clone = page.cloneNode(true) as HTMLElement;
+  const xhtml = new XMLSerializer().serializeToString(clone);
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${PAGE_W}" height="${PAGE_H}">` +
+    `<defs><style type="text/css">${fontCss}</style></defs>` +
+    `<foreignObject x="0" y="0" width="${PAGE_W}" height="${PAGE_H}">` +
+    `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${PAGE_W}px;height:${PAGE_H}px">${xhtml}</div>` +
+    `</foreignObject></svg>`;
+  const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  const img = new Image();
+  img.width = PAGE_W; img.height = PAGE_H;
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error("تعذّر رسم صفحة التقرير عبر SVG foreignObject"));
+    img.src = url;
+  });
+  const canvas = document.createElement("canvas");
+  canvas.width = PAGE_W * scale;
+  canvas.height = PAGE_H * scale;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("تعذّر إنشاء سياق canvas");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.scale(scale, scale);
+  ctx.drawImage(img, 0, 0, PAGE_W, PAGE_H);
+  return canvas;
+}
+
 export type StudentsReportInput = {
   students: Student[];
   teams: Team[];
@@ -219,15 +303,17 @@ export async function exportStudentsPdf(input: StudentsReportInput): Promise<voi
   const title = input.title ?? "تقرير بيانات الشباب";
   const dateStr = arDate(new Date().toISOString());
 
-  const [{ jsPDF }, html2canvasMod, logo] = await Promise.all([
+  const [{ jsPDF }, logo] = await Promise.all([
     import("jspdf"),
-    import("html2canvas"),
     loadLogo(),
   ]);
-  const html2canvas = html2canvasMod.default;
 
   // ننتظر تحميل الخطوط لضمان تشكيلٍ صحيحٍ قبل الرَّسم.
   if (document.fonts?.ready) { try { await document.fonts.ready; } catch { /* تجاهل */ } }
+
+  // عائلة الخطّ الفعليّة + بايتات الخطّ لتضمينها في صور الـ SVG.
+  const fontFamily = resolveArabicFontFamily();
+  const fontCss = await collectArabicFontFaceCss();
 
   // حاوية مخفيّة خارج الشاشة (مرئيّة للرَّسم لكن بعيدة عن العرض).
   const stage = document.createElement("div");
@@ -238,7 +324,7 @@ export async function exportStudentsPdf(input: StudentsReportInput): Promise<voi
   // buildPageShell يُلحق كلّ صفحةٍ بالمسرح بنفسه قبل القياس.
   const pages: HTMLDivElement[] = [];
   const footerSlots: HTMLDivElement[] = [];
-  let cur = buildPageShell(stage, logo, title, dateStr);
+  let cur = buildPageShell(stage, logo, title, dateStr, fontFamily);
 
   students.forEach((s, i) => {
     const wrap = document.createElement("tbody");
@@ -248,7 +334,7 @@ export async function exportStudentsPdf(input: StudentsReportInput): Promise<voi
     if (cur.tbody.offsetHeight > cur.avail && cur.tbody.children.length > 1) {
       cur.tbody.removeChild(row);            // الصفّ لا يتّسع → أغلِق الصفحة
       pages.push(cur.page); footerSlots.push(cur.footerSlot);
-      cur = buildPageShell(stage, logo, title, dateStr);
+      cur = buildPageShell(stage, logo, title, dateStr, fontFamily);
       cur.tbody.appendChild(row);            // أعِد الصفّ لأعلى الصفحة الجديدة
     }
   });
@@ -263,10 +349,7 @@ export async function exportStudentsPdf(input: StudentsReportInput): Promise<voi
   const ph = pdf.internal.pageSize.getHeight();
 
   for (let i = 0; i < pages.length; i++) {
-    const canvas = await html2canvas(pages[i], {
-      scale: 2, backgroundColor: "#ffffff", useCORS: true, logging: false,
-      width: PAGE_W, height: PAGE_H, windowWidth: PAGE_W, windowHeight: PAGE_H,
-    });
+    const canvas = await rasterizePageViaSvg(pages[i], fontCss, 2);
     const img = canvas.toDataURL("image/jpeg", 0.92);
     if (i > 0) pdf.addPage();
     pdf.addImage(img, "JPEG", 0, 0, pw, ph, undefined, "FAST");

@@ -16,3 +16,16 @@ export const sar = (n: number) => latnNumber.format(n);
 /** يُنسِّق تاريخ ISO تاريخاً ميلاديّاً بأرقامٍ لاتينيّة، أو «—» عند غيابه. */
 export const arDate = (iso?: string) =>
   iso ? latnDate.format(new Date(iso)) : "—";
+
+/** تحويل الأرقام العربيّة (٠-٩) إلى الأرقام الإنجليزيّة (0-9).
+ *  يُستخدم في حقول الإدخال (رقم الجوّال، رقم الهوية) لضمان عدم قَبول الأرقام العربيّة. */
+export const arabicToEnglishNumerals = (text: string): string => {
+  const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+  const englishDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+
+  let result = text;
+  for (let i = 0; i < arabicDigits.length; i++) {
+    result = result.replaceAll(arabicDigits[i], englishDigits[i]);
+  }
+  return result;
+};

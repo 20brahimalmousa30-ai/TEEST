@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { useStore } from "@/lib/store/StoreProvider";
 import type { RegField } from "@/lib/store/StoreProvider";
 import { defaultPostRegisterNote } from "@/lib/motivations";
+import { arabicToEnglishNumerals } from "@/lib/format";
 
 const grades = ["الأول ثانوي", "الثاني ثانوي", "الثالث ثانوي"];
 const sections = ["ريادة", "علو", "قيادة"] as const;
@@ -29,7 +30,14 @@ export function RegisterExperience() {
   const [motivIdx, setMotivIdx] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const set = (key: string, v: string) => setValues(prev => ({ ...prev, [key]: v }));
+  const set = (key: string, v: string) => {
+    // Convert Arabic numerals to English for phone and national ID fields
+    let value = v;
+    if ((key === "phone" || key === "nid" || key === "emergP") && v) {
+      value = arabicToEnglishNumerals(v);
+    }
+    setValues(prev => ({ ...prev, [key]: value }));
+  };
   const get = (key: string) => (values[key] ?? "").trim();
 
   // Rotate motivations after submission
