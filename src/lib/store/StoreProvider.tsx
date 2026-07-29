@@ -156,7 +156,7 @@ export type StoreActions = {
   resetAll(): void;
 };
 
-type Store = State & StoreActions & { hydrated: boolean };
+type Store = State & StoreActions & { hydrated: boolean; loadError: boolean; retry(): void };
 
 const StoreContext = createContext<Store | null>(null);
 
@@ -176,14 +176,19 @@ function secureCode(len = 8): string {
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<State>(initialState);
   const [hydrated, setHydrated] = useState(false);
+  // فشل جلبِ اللقطة (شبكة/إجراء خادمٍ قديم بعد النشر). نُظهره صراحةً حتى لا تبدو
+  // القائمة الفارغة وكأنّ البيانات حُذفت — فيُميّز المستخدم «تعذّر التحميل» عن «لا بيانات».
+  const [loadError, setLoadError] = useState(false);
 
   // يجلب اللقطة الكاملة من قاعدة البيانات ويستبدل بها الحالة المحلّيّة.
   const reload = useCallback(async () => {
     try {
       const fresh = await loadAllData();
       setState(fresh);
+      setLoadError(false);
     } catch (e) {
       console.error("تعذّر تحميل البيانات من قاعدة البيانات:", e);
+      setLoadError(true);
     }
   }, []);
 
@@ -498,7 +503,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     },
   }), [update, persist]);
 
-  const value = useMemo<Store>(() => ({ ...state, ...actions, hydrated }), [state, actions, hydrated]);
+  const value = useMemo<Store>(
+    () => ({ ...state, ...actions, hydrated, loadError, retry: () => { void reload(); } }),
+    [state, actions, hydrated, loadError, reload],
+  );
   return <StoreContext value={value}>{children}</StoreContext>;
 }
 
