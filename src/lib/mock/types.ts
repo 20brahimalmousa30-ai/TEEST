@@ -49,7 +49,8 @@ export type SupervisorPermission = (typeof SUPERVISOR_PERMISSIONS)[number]["key"
 export type Student = {
   id: string;
   name: string;
-  nationalIdMasked: string;
+  nationalIdMasked: string;          // قناعٌ عشوائيّ قديم (لا يُعتمد عليه) — للتوافق فقط
+  nationalId?: string;               // رقم الهوية الحقيقيّ الذي يُدخله الطالب عند التسجيل
   phone: string;
   grade: string;
   section: "ريادة" | "علو" | "قيادة";

@@ -50,53 +50,18 @@ function esc(s: string): string {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
 }
 
+/** حالة العرض في التقرير = دمجُ الاعتماد الإداريّ **مع** واقع السداد.
+ *  «معتمد» (أخضر) لا تظهر إلّا لمن اعتُمد إدارياً **وسدّد كامل المبلغ** فعلاً.
+ *  المعتمَد إدارياً الذي لم يُكمل السداد يظهر بوسمٍ مميّز «معتمد · غير مسدَّد»
+ *  (بترولي) لئلّا يُوحي «معتمد» وحده بأنّ الأمور مكتملة. هذا تغييرُ عرضٍ فقط
+ *  في التقرير — لا يمسّ منطق الاعتماد الفعليّ في النظام. */
 function statusMeta(s: Student): { label: string; color: string } {
   const st = s.approvalStatus ?? "APPROVED";
   if (st === "PENDING") return { label: "بانتظار الاعتماد", color: BRAND.warn };
   if (st === "REJECTED") return { label: "مرفوض", color: BRAND.crit };
+  const fullyPaid = s.totalAmount > 0 ? s.paidAmount >= s.totalAmount : s.paidAmount > 0;
+  if (!fullyPaid) return { label: "معتمد · غير مسدَّد", color: BRAND.petroleum };
   return { label: "معتمد", color: BRAND.ok };
-}
-
-/** خليّة الصورة الشخصيّة: صورةٌ دائريّة إن وُجدت، وإلّا الحرف الأوّل.
- *  الصور تُجلَب عند التصدير فقط (خريطةُ id→dataUrl) لا من لقطة الحالة. */
-function photoCell(s: Student, photos: Record<string, string>): string {
-  const initial = esc(s.name.trim().charAt(0) || "؟");
-  const photo = photos[s.id] ?? s.photoDataUrl;
-  if (photo) {
-    return `<img src="${photo}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;border:1.5px solid ${BRAND.goldSoft};display:block" />`;
-  }
-  return `<div style="width:34px;height:34px;border-radius:50%;background:${BRAND.petroleum};color:${BRAND.band};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700">${initial}</div>`;
-}
-
-/** يجلب صورةً من مسارٍ ويحوّلها إلى data URL (أو null إن لم توجد). */
-async function fetchAsDataUrl(url: string): Promise<string | null> {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    return await new Promise<string | null>(resolve => {
-      const r = new FileReader();
-      r.onload = () => resolve(String(r.result));
-      r.onerror = () => resolve(null);
-      r.readAsDataURL(blob);
-    });
-  } catch {
-    return null;
-  }
-}
-
-/** يجلب صور الشباب الشخصيّة عند التصدير (دفعاتٌ محدودة التزامن لتفادي إغراق الشبكة). */
-async function loadStudentPhotos(students: Student[]): Promise<Record<string, string>> {
-  const out: Record<string, string> = {};
-  const CONCURRENCY = 6;
-  for (let i = 0; i < students.length; i += CONCURRENCY) {
-    const batch = students.slice(i, i + CONCURRENCY);
-    const results = await Promise.all(
-      batch.map(async s => [s.id, await fetchAsDataUrl(`/api/students/${s.id}/image?kind=photo`)] as const),
-    );
-    for (const [id, url] of results) if (url) out[id] = url;
-  }
-  return out;
 }
 
 /** رأس الصفحة: الشعار + عنوان التقرير + تاريخ التصدير + شريط بترولي. */
@@ -117,7 +82,34 @@ function headerHtml(logo: string, title: string, dateStr: string): string {
   `;
 }
 
-/** رأس الجدول (thead) بألوان الهُويّة. */
+/** حالة السداد: تسمية + لون. */
+function payMeta(s: Student): { label: string; color: string } {
+  if (s.paymentStatus === "PAID") return { label: "مكتمل", color: BRAND.ok };
+  if (s.paymentStatus === "PARTIAL") return { label: "جزئي", color: BRAND.warn };
+  return { label: "غير مكتمل", color: BRAND.crit };
+}
+
+/** خليّة رقم الهوية: الرقم الحقيقيّ المحفوظ إن وُجد، وإلّا وسمٌ صريح «غير مسجَّل».
+ *  لا نعرض القناع العشوائيّ القديم (nationalIdMasked) لأنّه مضلِّلٌ — يوحي برقمٍ
+ *  حقيقيّ وهو مجرّد أرقامٍ عشوائيّة للطلاب القدامى. */
+function nidCell(s: Student): string {
+  const real = (s.nationalId ?? "").trim();
+  if (real) return `<span dir="ltr" style="unicode-bidi:plaintext;letter-spacing:.5px">${esc(real)}</span>`;
+  return `<span style="color:${BRAND.sub};font-size:10.5px;font-style:italic">غير مسجَّل</span>`;
+}
+
+/** شارة حالةٍ مقروءة: خلفيّةٌ صريحة + حَشوٌ كافٍ + سطرٌ واحد لا يلتفّ.
+ *  نتجنّب border-radius الكبير الذي كان يُقصّ النصّ عند رَسم html2canvas. */
+function pill(label: string, color: string): string {
+  return `<span style="display:inline-block;min-width:64px;box-sizing:border-box;` +
+    `padding:4px 10px;border-radius:6px;font-size:10.5px;font-weight:700;line-height:1.5;` +
+    `color:#fff;background:${color};white-space:nowrap;text-align:center">${esc(label)}</span>`;
+}
+
+/** ارتفاعٌ ثابتٌ لكلّ صفّ حتّى لا تتفاوت الصفوف مهما طال النصّ. */
+const ROW_H = 34;
+
+/** رأس الجدول (thead) بألوان الهُويّة — ٦ أعمدةٍ أساسيّة فقط. */
 function theadHtml(): string {
   const th = (t: string, align = "center", w = "auto") =>
     `<th style="padding:9px 8px;font-size:11.5px;font-weight:700;color:${BRAND.band};text-align:${align};width:${w};white-space:nowrap">${t}</th>`;
@@ -125,39 +117,36 @@ function theadHtml(): string {
     <thead>
       <tr style="background:${BRAND.petroleum}">
         ${th("#", "center", "34px")}
-        ${th("الصورة", "center", "44px")}
         ${th("الاسم", "right")}
-        ${th("الجوّال", "center", "110px")}
-        ${th("الحالة", "center", "96px")}
-        ${th("الفريق", "center", "90px")}
-        ${th("المشرف", "right", "120px")}
-        ${th("الرسوم (مدفوع/متبقّي)", "center", "150px")}
-        ${th("تاريخ التسجيل", "center", "110px")}
+        ${th("رقم الجوّال", "center", "104px")}
+        ${th("رقم الهوية", "center", "100px")}
+        ${th("الحالة", "center", "128px")}
+        ${th("حالة السداد", "center", "130px")}
       </tr>
     </thead>`;
 }
 
-/** صفٌّ واحد في الجدول. */
-function rowHtml(s: Student, idx: number, teams: Team[], supervisors: Supervisor[], photos: Record<string, string>): string {
-  const team = teams.find(t => t.id === s.teamId);
-  const supervisor = team ? supervisors.find(v => v.id === team.supervisorId) : undefined;
+/** صفٌّ واحد في الجدول — ٦ أعمدة، ارتفاعٌ ثابت. */
+function rowHtml(s: Student, idx: number): string {
   const st = statusMeta(s);
-  const remaining = Math.max(0, s.totalAmount - s.paidAmount);
+  const pay = payMeta(s);
   const zebra = idx % 2 === 0 ? "#FFFFFF" : BRAND.paper;
   const td = (inner: string, align = "center", extra = "") =>
-    `<td style="padding:7px 8px;font-size:11.5px;color:${BRAND.ink};text-align:${align};border-bottom:1px solid ${BRAND.line};vertical-align:middle;${extra}">${inner}</td>`;
+    `<td style="height:${ROW_H}px;padding:4px 8px;font-size:11.5px;color:${BRAND.ink};` +
+    `text-align:${align};border-bottom:1px solid ${BRAND.line};vertical-align:middle;${extra}">${inner}</td>`;
+  // الاسم قد يطول → نمنع الالتفاف ونقصّ بثلاث نقاطٍ حفاظاً على ثبات الارتفاع.
+  const nameCell =
+    `<span style="display:block;font-weight:600;white-space:nowrap;overflow:hidden;` +
+    `text-overflow:ellipsis;max-width:100%">${esc(s.name)}</span>`;
 
   return `
     <tr style="background:${zebra}">
       ${td(`<span style="color:${BRAND.sub};font-size:11px">${idx + 1}</span>`)}
-      ${td(`<div style="display:flex;justify-content:center">${photoCell(s, photos)}</div>`)}
-      ${td(`<span style="font-weight:600">${esc(s.name)}</span>`, "right")}
+      ${td(nameCell, "right")}
       ${td(`<span dir="ltr" style="unicode-bidi:plaintext">${esc(s.phone)}</span>`)}
-      ${td(`<span style="display:inline-block;padding:2px 9px;border-radius:20px;font-size:10.5px;font-weight:700;color:#fff;background:${st.color}">${st.label}</span>`)}
-      ${td(esc(team ? team.name : "—"))}
-      ${td(esc(supervisor ? supervisor.name : "—"), "right")}
-      ${td(`<span style="color:${BRAND.ok};font-weight:700">${sar(s.paidAmount)}</span> <span style="color:${BRAND.sub}">/</span> <span style="color:${remaining > 0 ? BRAND.crit : BRAND.sub};font-weight:700">${sar(remaining)}</span> <span style="color:${BRAND.sub};font-size:10px">من ${sar(s.totalAmount)}</span>`)}
-      ${td(`<span dir="ltr" style="unicode-bidi:plaintext">${esc(arDate(s.registeredAt))}</span>`)}
+      ${td(nidCell(s))}
+      ${td(pill(st.label, st.color))}
+      ${td(`${pill(pay.label, pay.color)}<div style="font-size:9.5px;color:${BRAND.sub};margin-top:3px">${sar(s.paidAmount)} / ${sar(s.totalAmount)}</div>`)}
     </tr>`;
 }
 
@@ -170,8 +159,11 @@ function footerHtml(pageNo: number, pageCount: number): string {
     </div>`;
 }
 
-/** يبني عنصر صفحةٍ فارغاً بأبعاد A4 وبنية رأس/جدول/تذييل جاهزة للقياس. */
-function buildPageShell(logo: string, title: string, dateStr: string): {
+/** يبني عنصر صفحةٍ فارغاً بأبعاد A4 وبنية رأس/جدول/تذييل جاهزة للقياس.
+ *  يُلحِق الصفحة بـ`stage` الحيّ **قبل** القياس؛ فبدونه تكون offsetHeight للعناصر
+ *  صفراً (عنصرٌ خارج DOM لا أبعاد له)، فيُحسَب `avail` أكبرَ من الحقيقة وتفيض
+ *  صفوفٌ خارج الصفحة فتُقصّ عند الرَّسم. */
+function buildPageShell(stage: HTMLElement, logo: string, title: string, dateStr: string): {
   page: HTMLDivElement; tbody: HTMLTableSectionElement; footerSlot: HTMLDivElement; avail: number;
 } {
   const page = document.createElement("div");
@@ -198,7 +190,11 @@ function buildPageShell(logo: string, title: string, dateStr: string): {
   page.appendChild(body);
   page.appendChild(footerSlot);
 
-  // القياس: نُلحق الصفحة مؤقّتاً لحساب الارتفاع المتاح للصفوف.
+  // نُلحق الصفحة بالمسرح الحيّ أوّلاً حتى تُعطي offsetHeight قيماً حقيقيّة.
+  stage.appendChild(page);
+
+  // القياس: الارتفاع المتاح للصفوف = ارتفاع الصفحة − الهوامش − الرأس − الفجوة −
+  //          رأس الجدول − التذييل − هامش أمان.
   const thead = table.querySelector("thead") as HTMLTableSectionElement;
   const footerProbe = document.createElement("div");
   footerProbe.innerHTML = footerHtml(1, 1);
@@ -219,15 +215,14 @@ export type StudentsReportInput = {
 
 /** يُولّد ملفّ PDF لبيانات الشباب ويُنزّله. */
 export async function exportStudentsPdf(input: StudentsReportInput): Promise<void> {
-  const { students, teams, supervisors } = input;
+  const { students } = input;
   const title = input.title ?? "تقرير بيانات الشباب";
   const dateStr = arDate(new Date().toISOString());
 
-  const [{ jsPDF }, html2canvasMod, logo, photos] = await Promise.all([
+  const [{ jsPDF }, html2canvasMod, logo] = await Promise.all([
     import("jspdf"),
     import("html2canvas"),
     loadLogo(),
-    loadStudentPhotos(students),
   ]);
   const html2canvas = html2canvasMod.default;
 
@@ -240,21 +235,20 @@ export async function exportStudentsPdf(input: StudentsReportInput): Promise<voi
   document.body.appendChild(stage);
 
   // ── ترقيم صفحات قائمٌ على القياس (لا يُقطع صفٌّ في المنتصف) ──
+  // buildPageShell يُلحق كلّ صفحةٍ بالمسرح بنفسه قبل القياس.
   const pages: HTMLDivElement[] = [];
   const footerSlots: HTMLDivElement[] = [];
-  let cur = buildPageShell(logo, title, dateStr);
-  stage.appendChild(cur.page);
+  let cur = buildPageShell(stage, logo, title, dateStr);
 
   students.forEach((s, i) => {
     const wrap = document.createElement("tbody");
-    wrap.innerHTML = rowHtml(s, i, teams, supervisors, photos);
+    wrap.innerHTML = rowHtml(s, i);
     const row = wrap.firstElementChild as HTMLTableRowElement;
     cur.tbody.appendChild(row);
     if (cur.tbody.offsetHeight > cur.avail && cur.tbody.children.length > 1) {
       cur.tbody.removeChild(row);            // الصفّ لا يتّسع → أغلِق الصفحة
       pages.push(cur.page); footerSlots.push(cur.footerSlot);
-      cur = buildPageShell(logo, title, dateStr);
-      stage.appendChild(cur.page);
+      cur = buildPageShell(stage, logo, title, dateStr);
       cur.tbody.appendChild(row);            // أعِد الصفّ لأعلى الصفحة الجديدة
     }
   });

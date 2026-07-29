@@ -24,7 +24,7 @@ const isWaiting  = (s: Student) => s.approvalStatus === "PENDING";
 export default function StudentsPage() {
   useEffect(() => { document.title = "الشباب — معالي محافظة بلّسمر"; }, []);
   const { session } = useSession();
-  const { students, teams, supervisors, addStudent, approveStudent, rejectStudent, reviewReceipt } = useStore();
+  const { students, teams, supervisors, addStudent, approveStudent, rejectStudent, reviewReceipt, hydrated, loadError } = useStore();
 
   // Only PRINCE / DEPUTY_PRINCE can approve/reject — and export the PDF report
   const canApprove = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
@@ -115,6 +115,16 @@ export default function StudentsPage() {
 
   async function exportPdf() {
     if (pdfBusy) return;
+    // حارسٌ ضدّ تصدير ملفٍّ فارغٍ (تصميمٌ بلا بيانات): لا نُصدّر قبل تحميل اللقطة
+    // أو عند فشلها، ولا حين لا يوجد شبابٌ معتمدون — نوضّح السبب بدل ملفٍّ مُضلِّل.
+    if (!hydrated || loadError) {
+      alert("لم تكتمل مزامنة البيانات بعد. حدِّث الصفحة ثم أعد المحاولة.");
+      return;
+    }
+    if (filtered.length === 0) {
+      alert("لا يوجد شبابٌ معتمدون مطابقون للفلاتر الحاليّة لتصديرهم.");
+      return;
+    }
     setPdfBusy(true);
     try {
       await exportStudentsPdf({ students: filtered, teams, supervisors });

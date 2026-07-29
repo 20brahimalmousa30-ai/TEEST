@@ -67,6 +67,7 @@ export function RegisterExperience() {
       emergencyContact: get("emergN") || "—",
       emergencyPhone: get("emergP") || "—",
       photoDataUrl: get("photo") || undefined,
+      nationalId: get("nid") || undefined,
     });
     setSubmittedName(name);
     setSubmitted(true);

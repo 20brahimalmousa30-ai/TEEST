@@ -27,7 +27,7 @@ const ADMIN = ["PRINCE", "DEPUTY_PRINCE"];
  *  (photo_data_url / receipt_data_url). تُستعمل في اللقطة الجماعية للطاقم
  *  حتى لا تُنقَل الصور في كلّ تحميل؛ تُجلَب الصور عند الطلب عبر مسارٍ مستقلّ. */
 const STUDENT_LEAN_COLUMNS =
-  "id,name,national_id_masked,phone,grade,section,team_id,payment_status," +
+  "id,name,national_id_masked,national_id,phone,grade,section,team_id,payment_status," +
   "paid_amount,total_amount,points,emergency_contact,emergency_phone,attendance," +
   "approval_status,registered_at,access_code,receipt_status,receipt_amount,receipt_submitted_at";
 
@@ -327,11 +327,12 @@ export async function dbAddStudent(input: Omit<Student, "id" | "nationalIdMasked
 
 export async function dbRegisterStudent(input: {
   name: string; phone: string; grade: string; section: Student["section"];
-  emergencyContact: string; emergencyPhone: string; photoDataUrl?: string;
+  emergencyContact: string; emergencyPhone: string; photoDataUrl?: string; nationalId?: string;
 }): Promise<Student> {
   // مسارٌ عامٌّ (تسجيل الزائر) — لا يتطلّب جلسة، لكن نتحقّق من الصورة والمدخلات.
   assertValidImage(input.photoDataUrl);
   if (!input.name?.trim() || !input.phone?.trim()) throw new Error("الاسم والجوّال مطلوبان.");
+  const nationalId = (input.nationalId ?? "").trim();
   const row = studentToRow({
     id: uid("st"),
     name: input.name,
@@ -344,7 +345,9 @@ export async function dbRegisterStudent(input: {
     totalAmount: 500,
     emergencyContact: input.emergencyContact,
     emergencyPhone: input.emergencyPhone,
-    nationalIdMasked: maskNid(),
+    nationalId,
+    // نُبقي القناع لعرضٍ مختصرٍ عند الحاجة، لكنّه مشتقٌّ الآن من الرقم الحقيقيّ حين وُجد.
+    nationalIdMasked: nationalId ? "••••••" + nationalId.slice(-4) : maskNid(),
     points: 0,
     attendance: 100,
     approvalStatus: "PENDING",

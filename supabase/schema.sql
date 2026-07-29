@@ -69,6 +69,7 @@ create table if not exists students (
   id                 text primary key,
   name               text not null,
   national_id_masked text not null default '',
+  national_id        text not null default '',   -- رقم الهوية الحقيقيّ (يُدخله الطالب) — فارغٌ للطلاب القدامى
   phone              text not null default '',
   grade              text not null default '',
   section            text not null default 'ريادة' check (section in ('ريادة','علو','قيادة')),

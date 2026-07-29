@@ -110,7 +110,9 @@ export default function StudentDetail() {
               </div>
               <div>
                 <div className="text-[18px] font-semibold text-text">{s.name}</div>
-                <div className="mt-1 text-[12.5px] text-text-3">الهويّة: <span className="num text-text-2">{s.nationalIdMasked}</span></div>
+                <div className="mt-1 text-[12.5px] text-text-3">الهويّة: {s.nationalId?.trim()
+                  ? <span className="num text-text-2">{s.nationalId}</span>
+                  : <span className="italic text-text-3">غير مسجَّل</span>}</div>
               </div>
             </div>
             <dl className="divide-y divide-line">
