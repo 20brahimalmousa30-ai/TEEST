@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { useSession } from "@/lib/auth/session";
 import { useStore } from "@/lib/store/StoreProvider";
-import { downloadCSV } from "@/lib/download";
+import { exportXlsx } from "@/lib/xlsx";
 
 const dayLabels = ["اليوم ١", "اليوم ٢", "اليوم ٣", "اليوم ٤", "اليوم ٥", "اليوم ٦", "اليوم ٧", "اليوم ٨"];
 
@@ -49,13 +49,23 @@ export default function MyTeamPage() {
   const pending = roster.filter(s => s.paymentStatus === "PENDING").length;
   const avgAtt = roster.length ? Math.round(roster.reduce((s, x) => s + x.attendance, 0) / roster.length) : 0;
 
-  function exportRoster() {
-    const rows: (string | number)[][] = [
-      ["الاسم", "الجوّال", "الصف", "القسم", "السداد"],
-      ...roster.map(s => [s.name, s.phone, s.grade, s.section,
-        s.paymentStatus === "PAID" ? "مسدَّد" : s.paymentStatus === "PARTIAL" ? "جزئي" : "معلّق"]),
-    ];
-    downloadCSV(`فريقي_${team.name}`, rows);
+  async function exportRoster() {
+    const rows = roster.map(s => [s.name, s.phone, s.grade, s.section,
+      s.paymentStatus === "PAID" ? "مسدَّد" : s.paymentStatus === "PARTIAL" ? "جزئي" : "معلّق"]);
+    await exportXlsx({
+      filename: `فريقي_${team.name}`,
+      sheetName: "فريقي",
+      title: `فريق ${team.name} — معالي محافظة بلّسمر`,
+      subtitle: `${roster.length} عضو`,
+      columns: [
+        { header: "الاسم", width: 26, align: "right" },
+        { header: "الجوّال", width: 16, align: "center" },
+        { header: "الصف", width: 14, align: "center" },
+        { header: "القسم", width: 12, align: "center" },
+        { header: "السداد", width: 13, align: "center" },
+      ],
+      rows,
+    });
   }
   function whatsappParents() {
     const msg = encodeURIComponent(`السلام عليكم أولياء أمور فريق ${team.name} — تذكير باللقاء المسائي غداً في الساعة السابعة.`);

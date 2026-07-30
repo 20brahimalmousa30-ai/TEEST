@@ -10,7 +10,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Field";
 import { useSession } from "@/lib/auth/session";
 import { useStore } from "@/lib/store/StoreProvider";
-import { downloadCSV } from "@/lib/download";
+import { exportXlsx } from "@/lib/xlsx";
 import { exportStudentsPdf } from "@/lib/pdf/studentsReport";
 import type { PaymentStatus, Student } from "@/lib/mock/types";
 import { sar } from "@/lib/format";
@@ -103,20 +103,33 @@ export default function StudentsPage() {
     setOpenAdd(false);
   }
 
-  function exportFiltered() {
-    const rows: (string | number)[][] = [
-      ["الاسم", "الهويّة", "الجوّال", "الصف", "القسم", "الفريق", "الحضور %", "النقاط", "السداد"],
-      ...filtered.map(s => {
-        const t = teams.find(t => t.id === s.teamId);
-        // الأمير/نائبه: الرقم الحقيقيّ الكامل (أو «غير مسجَّل») — كما في الواجهة والـ PDF.
-        //  المشرف: يبقى القناع (لقطته لا تحوي الرقم الحقيقيّ أصلاً — حمايةٌ متعمَّدة).
-        const nid = canApprove ? (s.nationalId?.trim() || "غير مسجَّل") : s.nationalIdMasked;
-        return [s.name, nid, s.phone, s.grade, s.section, t?.name ?? "—",
-          s.attendance, s.points,
-          s.paymentStatus === "PAID" ? "مسدَّد" : s.paymentStatus === "PARTIAL" ? "جزئي" : "معلّق"];
-      }),
-    ];
-    downloadCSV(`الشباب_${filtered.length}`, rows);
+  async function exportFiltered() {
+    const rows = filtered.map(s => {
+      const t = teams.find(t => t.id === s.teamId);
+      // الأمير/نائبه: الرقم الحقيقيّ الكامل (أو «غير مسجَّل») — كما في الواجهة والـ PDF.
+      //  المشرف: يبقى القناع (لقطته لا تحوي الرقم الحقيقيّ أصلاً — حمايةٌ متعمَّدة).
+      const nid = canApprove ? (s.nationalId?.trim() || "غير مسجَّل") : s.nationalIdMasked;
+      return [s.name, nid, s.phone, s.grade, s.section, t?.name ?? "—", s.attendance, s.points,
+        s.paymentStatus === "PAID" ? "مسدَّد" : s.paymentStatus === "PARTIAL" ? "جزئي" : "معلّق"];
+    });
+    await exportXlsx({
+      filename: `الشباب_${filtered.length}`,
+      sheetName: "الشباب",
+      title: "قائمة الشباب — معالي محافظة بلّسمر",
+      subtitle: `${filtered.length} شاب`,
+      columns: [
+        { header: "الاسم", width: 26, align: "right" },
+        { header: "الهويّة", width: 16, align: "center" },
+        { header: "الجوّال", width: 16, align: "center" },
+        { header: "الصف", width: 14, align: "center" },
+        { header: "القسم", width: 12, align: "center" },
+        { header: "الفريق", width: 18, align: "right" },
+        { header: "الحضور %", width: 12, align: "center", numFmt: "0" },
+        { header: "النقاط", width: 11, align: "center", numFmt: "#,##0" },
+        { header: "السداد", width: 13, align: "center" },
+      ],
+      rows,
+    });
   }
 
   async function exportPdf() {

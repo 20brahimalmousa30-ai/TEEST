@@ -13,7 +13,7 @@ import { Field } from "@/components/ui/Field";
 import { useStore } from "@/lib/store/StoreProvider";
 import { useSession } from "@/lib/auth/session";
 import { BudgetEditor } from "@/components/BudgetEditor";
-import { downloadCSV } from "@/lib/download";
+import { exportXlsx } from "@/lib/xlsx";
 import { fileToDataUrl, extractDominantColor } from "@/lib/image";
 import type { Student } from "@/lib/mock/types";
 
@@ -77,13 +77,25 @@ export default function TeamDetail() {
     setAddOpen(false);
   }
 
-  function exportRoster() {
-    const rows: (string | number)[][] = [
-      ["الاسم", "الجوّال", "الصف", "القسم", "الحضور %", "النقاط", "السداد"],
-      ...roster.map(s => [s.name, s.phone, s.grade, s.section, s.attendance, s.points,
-        s.paymentStatus === "PAID" ? "مسدَّد" : s.paymentStatus === "PARTIAL" ? "جزئي" : "معلّق"]),
-    ];
-    downloadCSV(`فريق_${team!.name}_${roster.length}_عضو`, rows);
+  async function exportRoster() {
+    const rows = roster.map(s => [s.name, s.phone, s.grade, s.section, s.attendance, s.points,
+      s.paymentStatus === "PAID" ? "مسدَّد" : s.paymentStatus === "PARTIAL" ? "جزئي" : "معلّق"]);
+    await exportXlsx({
+      filename: `فريق_${team!.name}_${roster.length}_عضو`,
+      sheetName: `فريق ${team!.name}`,
+      title: `فريق ${team!.name} — معالي محافظة بلّسمر`,
+      subtitle: `${roster.length} عضو`,
+      columns: [
+        { header: "الاسم", width: 26, align: "right" },
+        { header: "الجوّال", width: 16, align: "center" },
+        { header: "الصف", width: 14, align: "center" },
+        { header: "القسم", width: 12, align: "center" },
+        { header: "الحضور %", width: 12, align: "center", numFmt: "0" },
+        { header: "النقاط", width: 11, align: "center", numFmt: "#,##0" },
+        { header: "السداد", width: 13, align: "center" },
+      ],
+      rows,
+    });
   }
 
   function whatsappTeam() {

@@ -10,7 +10,8 @@ import { Modal } from "@/components/ui/Modal";
 import { Field, TextArea } from "@/components/ui/Field";
 import { useStore } from "@/lib/store/StoreProvider";
 import { useSession } from "@/lib/auth/session";
-import { downloadCSV } from "@/lib/download";
+import { exportXlsx, SAR_FMT } from "@/lib/xlsx";
+import { exportTableReportPdf, esc, ltr, pill, REPORT_COLORS as RC } from "@/lib/pdf/reportEngine";
 import type { Invoice, OcrExtraction } from "@/lib/mock/types";
 import { sar } from "@/lib/format";
 import { fileToInvoiceImage, isSupportedInvoiceFile } from "@/lib/invoice-files";
@@ -47,7 +48,7 @@ const CONCURRENCY = 3; // تحليل ٣ فواتير معاً (كنمط محاس
 
 export default function InvoicesPage() {
   useEffect(() => { document.title = "الفواتير — معالي محافظة بلّسمر"; }, []);
-  const { invoices, teams, committees, addInvoicesBatch, analyzeInvoice,
+  const { invoices, teams, committees, supervisors, addInvoicesBatch, analyzeInvoice,
     associationName, associationTaxNumber, conditionsPolicy } = useStore();
   const { session } = useSession();
   const canApprove = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
@@ -236,12 +237,98 @@ export default function InvoicesPage() {
     return committees.find(c => c.id === s.committeeId)?.name ?? "—";
   }
 
-  function exportAll() {
-    const rows: (string | number)[][] = [
-      ["الرقم", "المورّد", "الغرض", "التاريخ", "المبلغ", "الحالة"],
-      ...filtered.map(i => [i.code, i.vendor, i.purpose, i.date, i.amount, statusPill(i.status).label]),
-    ];
-    downloadCSV(`فواتير_${filtered.length}`, rows);
+  // ── بيانات صفٍّ واحدٍ لتقرير المشتريات (مشتركة بين إكسل وPDF) ──
+  function purchaseFields(i: Invoice) {
+    const vatAmt = Math.round((i.amount * i.vat) / (100 + i.vat));
+    return {
+      number: i.invoiceNumber || i.code,
+      vendor: i.vendor,
+      vendorTax: i.vendorTaxNumber || "—",
+      purpose: i.purpose,
+      scope: scopeLabel(i.scope),
+      date: i.date || "—",
+      net: i.amount - vatAmt,
+      vat: vatAmt,
+      total: i.amount,
+      status: statusPill(i.status).label,
+      uploader: i.uploadedBy ? (supervisors.find(s => s.id === i.uploadedBy)?.name ?? "—") : "الأمير",
+    };
+  }
+
+  async function exportPurchasesXlsx() {
+    const rows = filtered.map(i => {
+      const f = purchaseFields(i);
+      return [f.number, f.vendor, f.vendorTax, f.purpose, f.scope, f.date, f.net, f.vat, f.total, f.status, f.uploader];
+    });
+    await exportXlsx({
+      filename: `تقرير_المشتريات_${filtered.length}`,
+      sheetName: "المشتريات",
+      title: "تقرير المشتريات — معالي محافظة بلّسمر",
+      subtitle: `${filtered.length} فاتورة · إجماليّ ${sar(filtered.reduce((s, i) => s + i.amount, 0))} ر.س`,
+      columns: [
+        { header: "رقم الفاتورة", width: 16, align: "center" },
+        { header: "المورّد", width: 26, align: "right" },
+        { header: "الرقم الضريبي", width: 18, align: "center" },
+        { header: "الغرض", width: 28, align: "right" },
+        { header: "المصروف على", width: 20, align: "right" },
+        { header: "التاريخ", width: 14, align: "center" },
+        { header: "الصافي", width: 14, align: "center", numFmt: SAR_FMT, total: true },
+        { header: "الضريبة", width: 13, align: "center", numFmt: SAR_FMT, total: true },
+        { header: "الإجمالي", width: 15, align: "center", numFmt: SAR_FMT, total: true },
+        { header: "الحالة", width: 16, align: "center" },
+        { header: "مَن رفع", width: 20, align: "right" },
+      ],
+      rows,
+      totalsLabel: "الإجماليّ",
+    });
+  }
+
+  async function exportPurchasesPdf() {
+    const statusColor = (s: Invoice["status"]) =>
+      s === "approved" || s === "paid" ? RC.petroleum : s === "pending" ? RC.gold : "#B23A48";
+    const rows = filtered.map(i => {
+      const f = purchaseFields(i);
+      return [
+        ltr(f.number),
+        `<span style="font-weight:600">${esc(f.vendor)}</span>`,
+        ltr(f.vendorTax),
+        esc(f.purpose),
+        esc(f.scope),
+        ltr(f.date),
+        ltr(sar(f.total)),
+        pill(f.status, statusColor(i.status)),
+        esc(f.uploader),
+      ];
+    });
+    const totalSum = filtered.reduce((s, i) => s + i.amount, 0);
+    const approvedSum = filtered.filter(i => i.status === "approved" || i.status === "paid").reduce((s, i) => s + i.amount, 0);
+    const pendingCount = filtered.filter(i => i.status === "pending").length;
+    const summaryHtml =
+      `<div style="display:flex;gap:10px;flex-wrap:wrap">` +
+      [["إجماليّ المشتريات", `${sar(totalSum)} ر.س`], ["المعتمد", `${sar(approvedSum)} ر.س`], ["بانتظار الأمير", `${pendingCount}`], ["عدد الفواتير", `${filtered.length}`]]
+        .map(([k, v]) => `<div style="flex:1;min-width:130px;border:1px solid ${RC.line};border-radius:8px;padding:8px 12px;background:${RC.paper}">` +
+          `<div style="font-size:10px;color:${RC.sub}">${esc(k)}</div>` +
+          `<div style="font-size:14px;font-weight:800;color:${RC.petroleum};margin-top:2px" dir="ltr">${esc(v)}</div></div>`).join("") +
+      `</div>`;
+    await exportTableReportPdf({
+      title: "تقرير المشتريات",
+      subtitle: `${filtered.length} فاتورة`,
+      filename: "تقرير_المشتريات",
+      footerLabel: "تقرير المشتريات",
+      columns: [
+        { header: "رقم الفاتورة", width: "80px", align: "center" },
+        { header: "المورّد", width: "auto", align: "right" },
+        { header: "الرقم الضريبي", width: "104px", align: "center" },
+        { header: "الغرض", width: "auto", align: "right" },
+        { header: "المصروف على", width: "96px", align: "right" },
+        { header: "التاريخ", width: "78px", align: "center" },
+        { header: "الإجمالي", width: "84px", align: "center" },
+        { header: "الحالة", width: "92px", align: "center" },
+        { header: "مَن رفع", width: "90px", align: "right" },
+      ],
+      rows,
+      summaryHtml,
+    });
   }
 
   return (
@@ -252,7 +339,8 @@ export default function InvoicesPage() {
         subtitle={`${invoices.length} فاتورة، منها ${summary.aiExtracted} حُلِّلت بالذكاء الاصطناعي، و${summary.pending} بانتظار اعتماد الأمير.`}
         action={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={exportAll}>⬇ CSV</Button>
+            <Button variant="outline" onClick={exportPurchasesXlsx}>⬇ إكسل</Button>
+            <Button variant="outline" onClick={exportPurchasesPdf}>⎙ PDF</Button>
             <Button variant="primary" onClick={openModal}>↑ ارفع فواتير</Button>
           </div>
         }

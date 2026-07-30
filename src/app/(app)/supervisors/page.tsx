@@ -10,7 +10,8 @@ import { useStore } from "@/lib/store/StoreProvider";
 import { useSession } from "@/lib/auth/session";
 import type { Supervisor } from "@/lib/mock/types";
 import { SUPERVISOR_PERMISSIONS } from "@/lib/mock/types";
-import { toCSV, parseCSV, downloadCSV } from "@/lib/spreadsheet";
+import { parseCSV } from "@/lib/spreadsheet";
+import { exportXlsx } from "@/lib/xlsx";
 
 const empty = { name: "", phone: "", email: "", nationalId: "", teamIds: [] as string[], committeeIds: [] as string[], permissions: [] as string[] };
 
@@ -26,10 +27,26 @@ export default function SupervisorsPage() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  function exportExcel() {
-    const header = ["الاسم", "الجوّال", "البريد", "عدد الفرق", "عدد اللجان"];
-    const rows = supervisors.map(s => [s.name, s.phone, s.email, s.teamIds.length, s.committeeIds.length]);
-    downloadCSV(`المشرفون-${new Date().toISOString().slice(0, 10)}.csv`, toCSV([header, ...rows]));
+  async function exportExcel() {
+    const rows = supervisors.map(s => [
+      s.name, s.phone, s.email || "—", s.teamIds.length, s.committeeIds.length,
+      canApprove ? (s.nationalId || "غير مسجَّل") : "",
+    ]);
+    await exportXlsx({
+      filename: `المشرفون_${new Date().toISOString().slice(0, 10)}`,
+      sheetName: "المشرفون",
+      title: "قائمة المشرفين — معالي محافظة بلّسمر",
+      subtitle: `${supervisors.length} مشرف`,
+      columns: [
+        { header: "الاسم", width: 26, align: "right" },
+        { header: "الجوّال", width: 16, align: "center" },
+        { header: "البريد", width: 24, align: "right" },
+        { header: "عدد الفرق", width: 12, align: "center", numFmt: "0" },
+        { header: "عدد اللجان", width: 12, align: "center", numFmt: "0" },
+        ...(canApprove ? [{ header: "رقم الهويّة", width: 16, align: "center" as const }] : []),
+      ],
+      rows: rows.map(r => canApprove ? r : r.slice(0, 5)),
+    });
   }
 
   async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
