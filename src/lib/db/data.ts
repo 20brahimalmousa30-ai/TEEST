@@ -480,33 +480,35 @@ export async function dbSetPayment(id: string, status: PaymentStatus, paid: numb
   await getSupabase().from("students").update({ payment_status: status, paid_amount: paid }).eq("id", id);
 }
 /** البند ١٠: يرفع الطالبُ إيصال السداد — يُخزَّن بانتظار اعتماد الأمير. */
-export async function dbSubmitReceipt(id: string, dataUrl: string, amount: number) {
-  // المستفيدُ لسجلّه فقط، أو عضو طاقم.
+export async function dbSubmitReceipt(id: string, dataUrl: string) {
+  // المستفيدُ لسجلّه فقط، أو عضو طاقم. يرفع الصورة فقط (بلا مبلغ) — الأمير يتحقّق لاحقاً.
   await requireSelfOrStaff(id);
   assertValidImage(dataUrl);
   await getSupabase().from("students").update({
     receipt_data_url: dataUrl,
     receipt_status: "PENDING",
-    receipt_amount: amount,
+    receipt_amount: null,
     receipt_submitted_at: new Date().toISOString(),
   }).eq("id", id);
 }
-/** البند ١٠: يعتمد الأميرُ الإيصال (PAID بالمبلغ المُصرَّح) أو يرفضه (يبقى معلّقاً). */
-export async function dbReviewReceipt(id: string, approve: boolean) {
+/** البند ١٠: يعتمد الأميرُ الإيصال بمبلغٍ يتحقّق منه يدويّاً (افتراضاً الإجماليّ)، أو يرفضه. */
+export async function dbReviewReceipt(id: string, approve: boolean, amount?: number) {
   await requirePermission("students");
   const db = getSupabase();
   if (!approve) {
     await db.from("students").update({ receipt_status: "REJECTED" }).eq("id", id);
     return;
   }
-  const { data } = await db.from("students").select("receipt_amount, total_amount").eq("id", id).single();
-  const amount = data?.receipt_amount ?? 0;
+  const { data } = await db.from("students").select("total_amount").eq("id", id).single();
   const total = data?.total_amount ?? 0;
-  const status: PaymentStatus = amount >= total ? "PAID" : amount > 0 ? "PARTIAL" : "PENDING";
+  //  المبلغ من تحقّق الأمير اليدويّ؛ إن لم يُمرَّر فالإجماليّ الكامل. نحصره ضمن [0, total].
+  const verified = Math.max(0, Math.min(total, Math.round(amount ?? total)));
+  const status: PaymentStatus = verified >= total ? "PAID" : verified > 0 ? "PARTIAL" : "PENDING";
   await db.from("students").update({
     receipt_status: "APPROVED",
     payment_status: status,
-    paid_amount: amount,
+    paid_amount: verified,
+    receipt_amount: verified, // نُثبّت المبلغ الذي اعتمده الأمير
   }).eq("id", id);
 }
 

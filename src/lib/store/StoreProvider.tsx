@@ -134,9 +134,10 @@ export type StoreActions = {
   setPayment(id: string, status: PaymentStatus, paid: number): void;
   setStudentPhoto(id: string, dataUrl: string): void;
   /** البند ١٠: يرفع الطالب إيصال السداد (قيد المراجعة) */
-  submitReceipt(id: string, dataUrl: string, amount: number): void;
-  /** البند ١٠: يعتمد الأمير الإيصال أو يرفضه */
-  reviewReceipt(id: string, approve: boolean): void;
+  /** يرفع الطالب صورة الإيصال فقط (بلا مبلغ) — الأمير يتحقّق ويحدّد المبلغ عند الاعتماد */
+  submitReceipt(id: string, dataUrl: string): void;
+  /** يعتمد الأمير الإيصال بمبلغٍ يتحقّق منه يدويّاً (أو يرفضه) */
+  reviewReceipt(id: string, approve: boolean, amount?: number): void;
   // Supervisors
   addSupervisor(name: string, phone: string, email: string, teamIds: string[], committeeIds: string[], permissions: string[], nationalId?: string): void;
   /** استيراد جماعي من ملف Excel/CSV */
@@ -378,21 +379,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       update(s => ({ students: s.students.map(st => st.id === id ? { ...st, paymentStatus: status, paidAmount: paid } : st) }));
       persist(() => dbSetPayment(id, status, paid));
     },
-    submitReceipt(id, dataUrl, amount) {
+    submitReceipt(id, dataUrl) {
+      // الطالب يرفع الصورة فقط؛ المبلغ يحدّده الأمير عند الاعتماد (غير معروفٍ الآن).
       update(s => ({ students: s.students.map(st => st.id === id
-        ? { ...st, receiptDataUrl: dataUrl, receiptStatus: "PENDING", receiptAmount: amount, receiptSubmittedAt: new Date().toISOString() }
+        ? { ...st, receiptDataUrl: dataUrl, receiptStatus: "PENDING", receiptAmount: undefined, receiptSubmittedAt: new Date().toISOString() }
         : st) }));
-      persist(() => dbSubmitReceipt(id, dataUrl, amount));
+      persist(() => dbSubmitReceipt(id, dataUrl));
     },
-    reviewReceipt(id, approve) {
+    reviewReceipt(id, approve, amount) {
       update(s => ({ students: s.students.map(st => {
         if (st.id !== id) return st;
         if (!approve) return { ...st, receiptStatus: "REJECTED" };
-        const amount = st.receiptAmount ?? 0;
-        const status: PaymentStatus = amount >= st.totalAmount ? "PAID" : amount > 0 ? "PARTIAL" : "PENDING";
-        return { ...st, receiptStatus: "APPROVED", paymentStatus: status, paidAmount: amount };
+        //  المبلغ الذي تحقّق منه الأمير يدويّاً؛ افتراضاً الإجماليّ الكامل.
+        const amt = amount ?? st.totalAmount;
+        const status: PaymentStatus = amt >= st.totalAmount ? "PAID" : amt > 0 ? "PARTIAL" : "PENDING";
+        return { ...st, receiptStatus: "APPROVED", receiptAmount: amt, paymentStatus: status, paidAmount: amt };
       }) }));
-      persist(() => dbReviewReceipt(id, approve));
+      persist(() => dbReviewReceipt(id, approve, amount));
     },
 
     addSupervisor(name, phone, email, teamIds, committeeIds, permissions, nationalId = "") {

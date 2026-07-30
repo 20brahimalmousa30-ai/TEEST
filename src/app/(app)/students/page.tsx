@@ -38,6 +38,9 @@ export default function StudentsPage() {
   const [openUnpaid, setOpenUnpaid] = useState(false);
   const [openReceipts, setOpenReceipts] = useState(false);
   const [viewReceipt, setViewReceipt] = useState<Student | null>(null);
+  //  المبلغ الذي يتحقّق منه الأمير يدويّاً عند اعتماد الإيصال (افتراضاً الإجماليّ الكامل).
+  const [approveAmt, setApproveAmt] = useState(0);
+  useEffect(() => { if (viewReceipt) setApproveAmt(viewReceipt.totalAmount); }, [viewReceipt]);
   const [approveFor, setApproveFor] = useState<Student | null>(null);
   const [approveTeamId, setApproveTeamId] = useState("");
   const [form, setForm] = useState({
@@ -105,7 +108,10 @@ export default function StudentsPage() {
       ["الاسم", "الهويّة", "الجوّال", "الصف", "القسم", "الفريق", "الحضور %", "النقاط", "السداد"],
       ...filtered.map(s => {
         const t = teams.find(t => t.id === s.teamId);
-        return [s.name, s.nationalIdMasked, s.phone, s.grade, s.section, t?.name ?? "—",
+        // الأمير/نائبه: الرقم الحقيقيّ الكامل (أو «غير مسجَّل») — كما في الواجهة والـ PDF.
+        //  المشرف: يبقى القناع (لقطته لا تحوي الرقم الحقيقيّ أصلاً — حمايةٌ متعمَّدة).
+        const nid = canApprove ? (s.nationalId?.trim() || "غير مسجَّل") : s.nationalIdMasked;
+        return [s.name, nid, s.phone, s.grade, s.section, t?.name ?? "—",
           s.attendance, s.points,
           s.paymentStatus === "PAID" ? "مسدَّد" : s.paymentStatus === "PARTIAL" ? "جزئي" : "معلّق"];
       }),
@@ -291,11 +297,11 @@ export default function StudentsPage() {
                     </button>
                     <div>
                       <div className="text-[13.5px] text-text">{s.name}</div>
-                      <div className="num text-[11.5px] text-text-3">{team?.name ?? "—"} · مُصرَّح: {sar(s.receiptAmount ?? 0)} / {sar(s.totalAmount)} SAR</div>
+                      <div className="num text-[11.5px] text-text-3">{team?.name ?? "—"} · الإجماليّ: {sar(s.totalAmount)} SAR</div>
                     </div>
                     <div className="flex gap-2 text-[12px]">
-                      <button onClick={() => setViewReceipt(s)} className="rounded border border-line-strong px-3 py-1 text-text-2 hover:border-accent hover:text-text">عرض</button>
-                      <button onClick={() => reviewReceipt(s.id, true)} className="rounded border border-ok/40 bg-ok/10 px-3 py-1 text-ok hover:bg-ok/20">اعتماد</button>
+                      <button onClick={() => setViewReceipt(s)} className="rounded border border-line-strong px-3 py-1 text-text-2 hover:border-accent hover:text-text">عرض وتحقّق</button>
+                      <button onClick={() => reviewReceipt(s.id, true, s.totalAmount)} className="rounded border border-ok/40 bg-ok/10 px-3 py-1 text-ok hover:bg-ok/20">اعتماد كامل</button>
                       <button onClick={() => reviewReceipt(s.id, false)} className="rounded border border-critical/40 bg-critical/10 px-3 py-1 text-critical hover:bg-critical/20">رفض</button>
                     </div>
                   </li>
@@ -470,18 +476,36 @@ export default function StudentsPage() {
         open={viewReceipt !== null}
         onClose={() => setViewReceipt(null)}
         title={viewReceipt ? `إيصال ${viewReceipt.name}` : ""}
-        subtitle={viewReceipt ? `مبلغٌ مُصرَّح: ${sar(viewReceipt.receiptAmount ?? 0)} / ${sar(viewReceipt.totalAmount)} SAR` : ""}
+        subtitle={viewReceipt ? `تحقّق من الصورة وحدّد المبلغ المسدَّد (الإجماليّ ${sar(viewReceipt.totalAmount)} SAR)` : ""}
         footer={
           <>
             <Button variant="outline" onClick={() => setViewReceipt(null)}>إغلاق</Button>
             <Button variant="danger" onClick={() => { if (viewReceipt) reviewReceipt(viewReceipt.id, false); setViewReceipt(null); }}>رفض</Button>
-            <Button onClick={() => { if (viewReceipt) reviewReceipt(viewReceipt.id, true); setViewReceipt(null); }}>اعتماد السداد</Button>
+            <Button onClick={() => { if (viewReceipt) reviewReceipt(viewReceipt.id, true, approveAmt); setViewReceipt(null); }}>اعتماد السداد</Button>
           </>
         }
       >
         {viewReceipt && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={`/api/students/${viewReceipt.id}/image?kind=receipt`} alt="إيصال السداد" className="mx-auto max-h-[60vh] w-auto rounded border border-line" />
+          <div className="grid gap-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/api/students/${viewReceipt.id}/image?kind=receipt`} alt="إيصال السداد" className="mx-auto max-h-[55vh] w-auto rounded border border-line" />
+            <label className="block">
+              <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">المبلغ المسدَّد (يتحقّق منه الأمير من الصورة)</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number" min={0} max={viewReceipt.totalAmount} inputMode="numeric"
+                  value={approveAmt}
+                  onChange={e => setApproveAmt(Math.max(0, Math.min(viewReceipt.totalAmount, Number(e.target.value))))}
+                  className="num w-40 rounded border border-line-strong bg-surface px-3 py-2 text-[14px]"
+                />
+                <span className="text-[12px] text-text-3">SAR</span>
+                <button type="button" className="text-[12px] text-accent hover:underline" onClick={() => setApproveAmt(viewReceipt.totalAmount)}>كامل</button>
+              </div>
+              <p className="mt-1.5 text-[12px] text-text-3">
+                الحالة بعد الاعتماد: <b className="text-text">{approveAmt >= viewReceipt.totalAmount ? "مسدَّد بالكامل" : approveAmt > 0 ? "سدادٌ جزئي" : "بانتظار السداد"}</b>
+              </p>
+            </label>
+          </div>
         )}
       </Modal>
     </div>

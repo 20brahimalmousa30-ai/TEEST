@@ -24,7 +24,6 @@ export default function MePage() {
   const receiptRef = useRef<HTMLInputElement | null>(null);
   const [receiptErr, setReceiptErr] = useState("");
   const [receiptDraft, setReceiptDraft] = useState<string>("");
-  const [receiptAmount, setReceiptAmount] = useState<string>("");
 
   function onPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -52,9 +51,9 @@ export default function MePage() {
 
   function sendReceipt() {
     if (!student || !receiptDraft) { setReceiptErr("أرفِق صورة الإيصال أولاً."); return; }
-    const amount = Number(receiptAmount) || (student.totalAmount - student.paidAmount);
-    submitReceipt(student.id, receiptDraft, amount);
-    setReceiptDraft(""); setReceiptAmount(""); setReceiptErr("");
+    // الطالب يرسل صورة الإيصال فقط؛ الأمير يتحقّق من المبلغ ويعتمده يدويّاً.
+    submitReceipt(student.id, receiptDraft);
+    setReceiptDraft(""); setReceiptErr("");
     setPayOpen(false);
   }
 
@@ -221,15 +220,7 @@ export default function MePage() {
           <div className="flex justify-between border-b border-line pb-2"><span>المسدَّد سابقاً</span><span className="num text-text">{sar(student.paidAmount)}</span></div>
           <div className="flex justify-between text-[15px] font-semibold"><span>المبلغ المتبقّي</span><span className="num text-accent">{sar(student.totalAmount - student.paidAmount)} SAR</span></div>
 
-          <label className="block">
-            <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">المبلغ المُحوَّل (SAR)</span>
-            <input
-              type="text" inputMode="numeric" value={receiptAmount}
-              onChange={e => setReceiptAmount(e.target.value.replace(/[^\d]/g, ""))}
-              placeholder={String(student.totalAmount - student.paidAmount)}
-              className="num w-full rounded border border-line-strong bg-surface px-3 py-2 text-[14px]"
-            />
-          </label>
+          <p className="text-[12px] text-text-3">أرفِق صورة الإيصال فقط — يتحقّق الأمير من المبلغ ويعتمده.</p>
 
           <div>
             <input ref={receiptRef} type="file" accept="image/*" onChange={onReceiptFile} className="hidden" />
