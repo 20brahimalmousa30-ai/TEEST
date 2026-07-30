@@ -452,3 +452,39 @@ alter table app_settings add column if not exists conditions_policy    jsonb;
 -- ═══════════════════════════════════════════════════════════════════════
 alter table teams      add column if not exists budget integer not null default 0;
 alter table committees add column if not exists budget integer not null default 0;
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  تطبيع رقم الجوّال في الدخول (دفاعٌ إضافيّ خادميّ)
+--  المشكلة: أرقامٌ خُزِّنت بمحارف اتجاهٍ خفيّة/مسافات/«+966»/أرقامٍ هنديّة، فمنعت
+--  أصحابها من الدخول لأنّ المطابقة كانت حرفيّة. نُطبّع الطرفين داخل verify_login
+--  حتى تعمل حتى مع صفوفٍ قديمةٍ لم تُنظَّف. (التطبيع مطبَّقٌ أيضاً في الكتابة عبر TS.)
+--  ⚠️ شغّل هذا في Supabase.
+-- ═══════════════════════════════════════════════════════════════════════
+create or replace function norm_phone(p text) returns text
+language sql immutable as $$
+  select case
+    when d ~ '^00966[0-9]{9}$' then '0' || substr(d, 6)
+    when d ~ '^966[0-9]{9}$'   then '0' || substr(d, 4)
+    when d ~ '^5[0-9]{8}$'     then '0' || d
+    else d
+  end
+  from (
+    select regexp_replace(
+      translate(coalesce(p, ''),
+        '٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹',
+        '01234567890123456789'),
+      '[^0-9]', '', 'g'
+    ) as d
+  ) t;
+$$;
+
+create or replace function verify_login(p_phone text, p_code text)
+returns setof profiles
+language sql
+stable
+as $$
+  select * from profiles
+  where norm_phone(phone) = norm_phone(p_phone)
+    and code_hash = crypt(p_code, code_hash)
+  limit 1;
+$$;

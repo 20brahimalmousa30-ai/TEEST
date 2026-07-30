@@ -6,6 +6,7 @@ import {
   type AdminRow,
 } from "@/lib/db/data";
 import type { LoginResult } from "@/lib/db/types";
+import { normalizePhone } from "@/lib/phone";
 import {
   COOKIE, MAX_AGE, seal, getSession,
   loginBlocked, recordFailedLogin, clearLoginAttempts,
@@ -14,7 +15,9 @@ import {
 export { getSession };
 
 /** تسجيل الدخول: يتحقّق من الجوّال والرمز (مع حدٍّ للمحاولات) ثم يزرع كوكي جلسةٍ موقّعاً. */
-export async function login(phone: string, code: string): Promise<LoginResult> {
+export async function login(rawPhone: string, code: string): Promise<LoginResult> {
+  // نُطبّع الرقم المُدخَل (أرقام هنديّة، +966، مسافات، محارف خفيّة) قبل أيّ مطابقة.
+  const phone = normalizePhone(rawPhone);
   // حدُّ المحاولات: يمنع التخمين العنيف على رمز الدخول.
   const gate = loginBlocked(phone);
   if (gate.blocked) return { ok: false };

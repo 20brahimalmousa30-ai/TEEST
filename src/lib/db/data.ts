@@ -14,6 +14,7 @@ import {
 import { motivations as DEFAULT_MOTIVATIONS, tickerPhrases as DEFAULT_TICKER } from "@/lib/motivations";
 import type { PageMarqueeMap } from "@/lib/pageMarquees";
 import { getSession } from "@/lib/auth/session-core";
+import { normalizePhone } from "@/lib/phone";
 import type { DbSession } from "./types";
 import { analyzeInvoice, type InvoiceMediaType } from "@/lib/ai/vision";
 import { evaluateConditions, passesPolicy, DEFAULT_CONDITIONS_POLICY } from "@/lib/ai/conditions";
@@ -347,6 +348,7 @@ export async function dbAddStudent(input: Omit<Student, "id" | "nationalIdMasked
   const db = getSupabase();
   const row = studentToRow({
     ...input,
+    phone: normalizePhone(input.phone),
     id: uid("st"),
     nationalIdMasked: maskNid(),
     points: 0,
@@ -369,7 +371,7 @@ export async function dbRegisterStudent(input: {
   const row = studentToRow({
     id: uid("st"),
     name: input.name,
-    phone: input.phone,
+    phone: normalizePhone(input.phone),
     grade: input.grade,
     section: input.section,
     teamId: "",
@@ -398,10 +400,11 @@ async function dbUpsertLogin(opts: {
   phone: string; code: string; name: string;
   role: "SUPERVISOR" | "BENEFICIARY"; supervisorId?: string; studentId?: string; landing: string;
 }) {
-  if (!opts.phone.trim()) return; // لا حساب دون جوّال
+  const phone = normalizePhone(opts.phone);
+  if (!phone) return; // لا حساب دون جوّال
   const { error } = await getSupabase().rpc("upsert_login", {
     p_id: uid("acc"),
-    p_phone: opts.phone.trim(),
+    p_phone: phone,
     p_code: opts.code,
     p_name: opts.name,
     p_role: opts.role,
@@ -437,6 +440,7 @@ export async function dbUpdateStudent(id: string, patch: Partial<Student>) {
   assertValidImage(patch.photoDataUrl);
   const db = getSupabase();
   const row = studentToRow(patch);
+  if (patch.phone !== undefined) (row as Record<string, unknown>).phone = normalizePhone(patch.phone);
   // رقم الهوية الحقيقيّ حسّاسٌ — لا يعدّله إلاّ الإدارة (الأمير/نائبه)، لا المشرف،
   // ولو صاغ طلباً مباشراً. نُجرّده هنا في الخادم كخطّ دفاعٍ ثانٍ خلف إخفاء الحقل.
   if (!ADMIN.includes(session.role)) {
@@ -522,8 +526,9 @@ async function bumpTeamCount(teamId: string, delta: number) {
 
 /* ─────────────────────────── المشرفون ─────────────────────────── */
 
-export async function dbAddSupervisor(name: string, phone: string, email: string, teamIds: string[], committeeIds: string[], permissions: string[], code: string, nationalId = "") {
+export async function dbAddSupervisor(name: string, phoneRaw: string, email: string, teamIds: string[], committeeIds: string[], permissions: string[], code: string, nationalId = "") {
   await requireAdmin();
+  const phone = normalizePhone(phoneRaw);
   const id = uid("s");
   const nid = nationalId.trim();
   await getSupabase().from("supervisors").insert(
@@ -547,7 +552,7 @@ export async function dbImportSupervisors(rows: { name: string; phone: string; e
   if (!rows.length) return 0;
   const payload = rows.map(r =>
     // الاستيراد لا يحمل رقم هوية — يُترك فارغاً فيُعرَض «غير مسجَّل» (لا قناعٌ وهمي).
-    supervisorToRow({ id: uid("s"), name: r.name, phone: r.phone, email: r.email, nationalIdMasked: "" }),
+    supervisorToRow({ id: uid("s"), name: r.name, phone: normalizePhone(r.phone), email: r.email, nationalIdMasked: "" }),
   );
   const { error } = await getSupabase().from("supervisors").insert(payload);
   if (error) throw error;
@@ -556,6 +561,7 @@ export async function dbImportSupervisors(rows: { name: string; phone: string; e
 export async function dbUpdateSupervisor(id: string, patch: Partial<Supervisor>) {
   await requireAdmin();
   const row = supervisorToRow(patch);
+  if (patch.phone !== undefined) (row as Record<string, unknown>).phone = normalizePhone(patch.phone);
   // عند تعديل رقم الهوية الحقيقيّ، نُزامن القناع معه (أو نُفرغه إن مُسِح).
   if (patch.nationalId !== undefined) {
     const nid = patch.nationalId.trim();
@@ -900,7 +906,7 @@ export async function dbListAdmins(): Promise<AdminRow[]> {
 export async function dbCreateAdmin(name: string, phone: string, code: string, role: string): Promise<{ ok: boolean; error?: string }> {
   await requireOwner();
   const { error } = await getSupabase().rpc("create_admin", {
-    p_id: uid("adm"), p_phone: phone.trim(), p_code: code.trim(), p_name: name.trim(), p_role: role,
+    p_id: uid("adm"), p_phone: normalizePhone(phone), p_code: code.trim(), p_name: name.trim(), p_role: role,
   });
   if (error) return { ok: false, error: /duplicate|unique/i.test(error.message) ? "الجوّال مُسجَّل مسبقاً." : "تعذّر إنشاء الحساب." };
   return { ok: true };
@@ -924,7 +930,7 @@ export async function dbDeleteAdmin(id: string): Promise<boolean> {
 
 /** يتحقّق من الجوّال والرمز عبر دالّة verify_login في قاعدة البيانات (تشفير bcrypt). */
 export async function dbVerifyLogin(phone: string, code: string): Promise<LoginResult> {
-  const { data, error } = await getSupabase().rpc("verify_login", { p_phone: phone.trim(), p_code: code.trim() });
+  const { data, error } = await getSupabase().rpc("verify_login", { p_phone: normalizePhone(phone), p_code: code.trim() });
   if (error || !data || (Array.isArray(data) && data.length === 0)) return { ok: false };
   const row = Array.isArray(data) ? data[0] : data;
   return {
