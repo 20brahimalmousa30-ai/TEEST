@@ -6,14 +6,28 @@ import { Button } from "@/components/ui/Button";
 import { Modal, Confirm } from "@/components/ui/Modal";
 import { Field, TextArea } from "@/components/ui/Field";
 import { useStore } from "@/lib/store/StoreProvider";
+import { useSession } from "@/lib/auth/session";
 import { fileToDataUrl, extractDominantColor } from "@/lib/image";
+import { BudgetEditor } from "@/components/BudgetEditor";
+import { useMemo } from "react";
 
 const swatches = ["#B54A2E", "#1E4635", "#5F8A5C", "#4E6B7A", "#B8955A", "#7A5B2E", "#8C5A3C"];
 const emptyForm = { name: "", description: "", color: swatches[0], supervisorIds: [] as string[], imageDataUrl: "" };
 
 export default function CommitteesPage() {
   useEffect(() => { document.title = "اللجان — معالي محافظة بلّسمر"; }, []);
-  const { committees, supervisors, addCommittee, deleteCommittee } = useStore();
+  const { committees, supervisors, invoices, addCommittee, deleteCommittee, setCommitteeBudget } = useStore();
+  const { session } = useSession();
+  const canApprove = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
+  // المصروف المعتمد لكلّ لجنة (لعرض المتبقّي).
+  const spentByCommittee = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const i of invoices) {
+      if ((i.status === "approved" || i.status === "paid") && i.scope.kind === "committee")
+        m[i.scope.committeeId] = (m[i.scope.committeeId] ?? 0) + i.amount;
+    }
+    return m;
+  }, [invoices]);
   const [open, setOpen] = useState(false);
   const [toDelete, setToDelete] = useState<string | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
@@ -94,6 +108,12 @@ export default function CommitteesPage() {
                   ))}
                 </div>
               </div>
+              <BudgetEditor
+                budget={c.budget ?? 0}
+                spent={spentByCommittee[c.id] ?? 0}
+                canEdit={canApprove}
+                onSave={n => setCommitteeBudget(c.id, n)}
+              />
             </article>
           );
         })}

@@ -48,6 +48,23 @@ export default function InvoiceDetail() {
   const uploader = inv.uploadedBy ? supervisors.find(s => s.id === inv.uploadedBy)?.name : null;
   const sp = statusPill(inv.status);
 
+  // موازنة الجهة المصروف عليها + المتبقّي (عرضٌ إرشاديّ أثناء الاعتماد — لا يمنع).
+  const budgetInfo = (() => {
+    if (scope.kind === "team") {
+      const t = teams.find(x => x.id === scope.teamId);
+      if (!t) return null;
+      const spent = invoices.filter(i => (i.status === "approved" || i.status === "paid") && i.scope.kind === "team" && i.scope.teamId === t.id && i.id !== inv.id).reduce((s, i) => s + i.amount, 0);
+      return { label: `فريق ${t.name}`, budget: t.budget ?? 0, spent };
+    }
+    if (scope.kind === "committee") {
+      const c = committees.find(x => x.id === scope.committeeId);
+      if (!c) return null;
+      const spent = invoices.filter(i => (i.status === "approved" || i.status === "paid") && i.scope.kind === "committee" && i.scope.committeeId === c.id && i.id !== inv.id).reduce((s, i) => s + i.amount, 0);
+      return { label: c.name, budget: c.budget ?? 0, spent };
+    }
+    return null;
+  })();
+
   return (
     <div className="page-shell">
       <PageHeader
@@ -149,6 +166,24 @@ export default function InvoiceDetail() {
               <p className="text-[13.5px] text-text-2">أُدخِلت بياناتها يدويّاً دون تحليلٍ آليّ.</p>
             )}
           </Card>
+
+          {/* الموازنة المتبقّية للجهة (عرضٌ إرشاديّ) */}
+          {budgetInfo && budgetInfo.budget > 0 && (
+            <Card title="موازنة الجهة">
+              <div className="grid gap-1.5 text-[13px]">
+                <div className="flex justify-between"><span className="text-text-3">{budgetInfo.label}</span></div>
+                <div className="flex justify-between"><span className="text-text-2">المُخصَّص</span><span className="num text-text">{sar(budgetInfo.budget)}</span></div>
+                <div className="flex justify-between"><span className="text-text-2">المصروف المعتمد</span><span className="num text-text">{sar(budgetInfo.spent)}</span></div>
+                <div className="flex justify-between border-t border-line pt-1.5">
+                  <span className="text-text-2">المتبقّي {inv.status !== "approved" && inv.status !== "paid" ? "قبل هذه الفاتورة" : ""}</span>
+                  <span className={`num ${budgetInfo.budget - budgetInfo.spent < inv.amount ? "text-critical" : "text-ok"}`}>{sar(budgetInfo.budget - budgetInfo.spent)}</span>
+                </div>
+                {(inv.status === "pending") && budgetInfo.budget - budgetInfo.spent < inv.amount && (
+                  <p className="mt-1 text-[11.5px] text-critical">⚠ هذه الفاتورة ({sar(inv.amount)}) تتجاوز المتبقّي من الموازنة.</p>
+                )}
+              </div>
+            </Card>
+          )}
 
           <Card title="الإجراءات">
             <div className="flex flex-col gap-2">

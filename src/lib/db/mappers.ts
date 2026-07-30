@@ -17,6 +17,7 @@ export const rowToTeam = (r: any): Team => ({
   studentCount: r.student_count ?? 0,
   points: r.points ?? 0,
   tagline: r.tagline ?? "",
+  budget: r.budget ?? 0,
   imageDataUrl: r.image_data_url ?? undefined,
 });
 
@@ -29,6 +30,7 @@ export const teamToRow = (t: Partial<Team>) => ({
   ...(t.studentCount !== undefined && { student_count: t.studentCount }),
   ...(t.points !== undefined && { points: t.points }),
   ...(t.tagline !== undefined && { tagline: t.tagline }),
+  ...(t.budget !== undefined && { budget: t.budget }),
   ...(t.imageDataUrl !== undefined && { image_data_url: t.imageDataUrl }),
 });
 
@@ -39,6 +41,7 @@ export const rowToCommittee = (r: any): Committee => ({
   supervisorIds: [],
   description: r.description ?? "",
   color: r.color,
+  budget: r.budget ?? 0,
   imageDataUrl: r.image_data_url ?? undefined,
 });
 
@@ -47,6 +50,7 @@ export const committeeToRow = (c: Partial<Committee>) => ({
   ...(c.name !== undefined && { name: c.name }),
   ...(c.description !== undefined && { description: c.description }),
   ...(c.color !== undefined && { color: c.color }),
+  ...(c.budget !== undefined && { budget: c.budget }),
   ...(c.imageDataUrl !== undefined && { image_data_url: c.imageDataUrl }),
 });
 

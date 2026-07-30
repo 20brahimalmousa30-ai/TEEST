@@ -29,11 +29,25 @@ const EMPTY_OCR: OcrExtraction = {
   invoiceNumber: "", issueDate: "", lineItems: [], vatAmount: 0, total: 0, isTaxInvoice: false,
 };
 
-type Stage = "pick" | "analyzing" | "review" | "error";
+// عنصرُ فاتورةٍ واحدٍ ضمن دفعة الرفع المتعدّد.
+type ItemStage = "analyzing" | "review" | "error";
+type BatchItem = {
+  id: number;
+  fileName: string;
+  imageDataUrl: string;
+  stage: ItemStage;
+  err: string;
+  ocr: OcrExtraction;
+  purpose: string;
+  scopeKind: "event" | "team" | "committee";
+  scopeId: string;
+};
+
+const CONCURRENCY = 3; // تحليل ٣ فواتير معاً (كنمط محاسب كلود).
 
 export default function InvoicesPage() {
   useEffect(() => { document.title = "الفواتير — معالي محافظة بلّسمر"; }, []);
-  const { invoices, teams, committees, addInvoice, analyzeInvoice,
+  const { invoices, teams, committees, addInvoicesBatch, analyzeInvoice,
     associationName, associationTaxNumber, conditionsPolicy } = useStore();
   const { session } = useSession();
   const canApprove = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
@@ -41,88 +55,150 @@ export default function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState<"ALL" | Invoice["status"]>("ALL");
   const [q, setQ] = useState("");
 
-  // ── حالة نافذة الرفع/التحليل/المراجعة ──
+  // ── حالة نافذة الرفع المتعدّد ──
   const [open, setOpen] = useState(false);
-  const [stage, setStage] = useState<Stage>("pick");
-  const [err, setErr] = useState("");
-  const [imageDataUrl, setImageDataUrl] = useState("");
-  const [ocr, setOcr] = useState<OcrExtraction>(EMPTY_OCR);
-  const [purpose, setPurpose] = useState("");
-  const [scopeKind, setScopeKind] = useState<"event" | "team" | "committee">("event");
-  const [scopeId, setScopeId] = useState("");
+  const [items, setItems] = useState<BatchItem[]>([]);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [pickErr, setPickErr] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const idRef = useRef(0);
+  const filesRef = useRef<Record<number, File>>({});
 
-  function resetModal() {
-    setStage("pick"); setErr(""); setImageDataUrl(""); setOcr(EMPTY_OCR);
-    setPurpose(""); setScopeKind("event"); setScopeId(teams[0]?.id ?? "");
+  function openModal() {
+    setItems([]); setActiveIdx(0); setPickErr("");
     if (fileRef.current) fileRef.current.value = "";
+    setOpen(true);
   }
-  function openModal() { resetModal(); setOpen(true); }
 
-  async function runAnalysis(dataUrl: string) {
-    setStage("analyzing"); setErr("");
+  const active = items[activeIdx];
+  const defaultScopeId = teams[0]?.id ?? "";
+
+  /** يحلّل عنصراً واحداً (تحويل الملف ثمّ تحليل الذكاء الاصطناعي). */
+  async function analyzeItem(itemId: number, file: File) {
     try {
-      const result = await analyzeInvoice(dataUrl);
-      setOcr(result);
-      setStage("review");
+      const img = await fileToInvoiceImage(file);
+      setItems(prev => prev.map(it => it.id === itemId ? { ...it, imageDataUrl: img.dataUrl } : it));
+      const result = await analyzeInvoice(img.dataUrl);
+      setItems(prev => prev.map(it => it.id === itemId ? { ...it, ocr: result, stage: "review" } : it));
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "تعذّر تحليل الفاتورة.");
-      setStage("error");
+      const msg = e instanceof Error ? e.message : "تعذّر تحليل الفاتورة.";
+      setItems(prev => prev.map(it => it.id === itemId ? { ...it, stage: "error", err: msg } : it));
     }
   }
 
-  async function onFile(file: File | undefined) {
-    if (!file) return;
-    if (!isSupportedInvoiceFile(file)) {
-      setErr("نوع ملفٍ غير مدعوم — المسموح: JPG أو PNG أو WebP أو GIF أو PDF."); setStage("error"); return;
-    }
-    setStage("analyzing"); setErr("");
-    try {
-      const img = await fileToInvoiceImage(file); // ضغطٌ في المتصفّح + تحويل PDF
-      setImageDataUrl(img.dataUrl);
-      await runAnalysis(img.dataUrl);            // تحليلٌ تلقائيٌّ فور الرفع
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "تعذّرت قراءة الملف."); setStage("error");
-    }
-  }
+  /** يستقبل ملفّات الدخل ويحلّلها متوازياً (٣ معاً). */
+  async function onFiles(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList).filter(isSupportedInvoiceFile);
+    const rejected = fileList.length - files.length;
+    setPickErr(rejected > 0 ? `تجاهلتُ ${rejected} ملفاً بنوعٍ غير مدعوم (المسموح: JPG · PNG · WebP · GIF · PDF).` : "");
+    if (files.length === 0) return;
 
-  // ── تقييمُ الشروط السبعة حيّاً (يطابق منطق الخادم) ──
-  const liveConditions = useMemo(
-    () => evaluateConditions(ocr, associationName, associationTaxNumber),
-    [ocr, associationName, associationTaxNumber],
-  );
-  const willAutoApprove = passesPolicy(liveConditions, conditionsPolicy);
-
-  function updateItem(idx: number, patch: Partial<OcrExtraction["lineItems"][number]>) {
-    setOcr(o => ({ ...o, lineItems: o.lineItems.map((it, i) => i === idx ? { ...it, ...patch } : it) }));
-  }
-  function addItem() {
-    setOcr(o => ({ ...o, lineItems: [...o.lineItems, { description: "", quantity: 1, unitPrice: 0, total: 0 }] }));
-  }
-  function removeItem(idx: number) {
-    setOcr(o => ({ ...o, lineItems: o.lineItems.filter((_, i) => i !== idx) }));
-  }
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!ocr.vendorName.trim() || !ocr.total || !purpose.trim()) return;
-    const scope = scopeKind === "event" ? { kind: "event" as const }
-      : scopeKind === "team" ? { kind: "team" as const, teamId: scopeId }
-      : { kind: "committee" as const, committeeId: scopeId };
-    const vatPct = ocr.total > ocr.vatAmount && ocr.vatAmount > 0
-      ? Math.round((ocr.vatAmount / (ocr.total - ocr.vatAmount)) * 100) : 15;
-    addInvoice({
-      vendor: ocr.vendorName.trim(),
-      purpose: purpose.trim(),
-      scope,
-      amount: ocr.total,
-      vat: vatPct,
-      date: ocr.issueDate,
-      imageDataUrl: imageDataUrl || undefined,
-      ocr: imageDataUrl ? ocr : undefined, // تحليلٌ فقط عند وجود صورة
+    const startIdx = items.length;
+    const created: BatchItem[] = files.map(f => {
+      const id = ++idRef.current;
+      filesRef.current[id] = f;
+      return {
+        id, fileName: f.name, imageDataUrl: "", stage: "analyzing" as const, err: "",
+        ocr: EMPTY_OCR, purpose: "", scopeKind: "event" as const, scopeId: defaultScopeId,
+      };
     });
+    setItems(prev => [...prev, ...created]);
+    setActiveIdx(startIdx);
+    if (fileRef.current) fileRef.current.value = "";
+
+    // مجمّعُ تنفيذٍ محدود التوازي.
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < created.length) {
+        const my = cursor++;
+        await analyzeItem(created[my].id, files[my]);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, created.length) }, worker));
+  }
+
+  function retryItem(item: BatchItem) {
+    const file = filesRef.current[item.id];
+    if (!file) return;
+    setItems(prev => prev.map(it => it.id === item.id ? { ...it, stage: "analyzing", err: "" } : it));
+    void analyzeItem(item.id, file);
+  }
+
+  function removeItem(id: number) {
+    setItems(prev => {
+      const next = prev.filter(it => it.id !== id);
+      setActiveIdx(i => Math.max(0, Math.min(i, next.length - 1)));
+      return next;
+    });
+    delete filesRef.current[id];
+  }
+
+  // ── تعديل العنصر النشط ──
+  function patchActive(patch: Partial<BatchItem>) {
+    setItems(prev => prev.map((it, i) => i === activeIdx ? { ...it, ...patch } : it));
+  }
+  function patchOcr(patch: Partial<OcrExtraction>) {
+    setItems(prev => prev.map((it, i) => i === activeIdx ? { ...it, ocr: { ...it.ocr, ...patch } } : it));
+  }
+  function updateLine(idx: number, patch: Partial<OcrExtraction["lineItems"][number]>) {
+    setItems(prev => prev.map((it, i) => i === activeIdx
+      ? { ...it, ocr: { ...it.ocr, lineItems: it.ocr.lineItems.map((li, k) => k === idx ? { ...li, ...patch } : li) } } : it));
+  }
+  function addLine() {
+    setItems(prev => prev.map((it, i) => i === activeIdx
+      ? { ...it, ocr: { ...it.ocr, lineItems: [...it.ocr.lineItems, { description: "", quantity: 1, unitPrice: 0, total: 0 }] } } : it));
+  }
+  function removeLine(idx: number) {
+    setItems(prev => prev.map((it, i) => i === activeIdx
+      ? { ...it, ocr: { ...it.ocr, lineItems: it.ocr.lineItems.filter((_, k) => k !== idx) } } : it));
+  }
+
+  // هل العنصر سيُعتمد تلقائياً؟ (يطابق منطق الخادم).
+  function itemAutoApproves(it: BatchItem) {
+    return passesPolicy(evaluateConditions(it.ocr, associationName, associationTaxNumber), conditionsPolicy);
+  }
+  function itemValid(it: BatchItem) {
+    return it.stage === "review" && !!it.ocr.vendorName.trim() && !!it.ocr.total && !!it.purpose.trim();
+  }
+
+  const liveConditions = active ? evaluateConditions(active.ocr, associationName, associationTaxNumber) : null;
+  const activeAutoApprove = active ? passesPolicy(liveConditions!, conditionsPolicy) : false;
+
+  const reviewItems = items.filter(it => it.stage === "review");
+  const analyzingCount = items.filter(it => it.stage === "analyzing").length;
+  const allReviewValid = reviewItems.length > 0 && reviewItems.every(itemValid);
+
+  function submitAll() {
+    const invalid = items.find(it => it.stage === "review" && !itemValid(it));
+    if (invalid) { setActiveIdx(items.indexOf(invalid)); return; }
+    const inputs = items.filter(it => it.stage === "review").map(it => {
+      const scope = it.scopeKind === "event" ? { kind: "event" as const }
+        : it.scopeKind === "team" ? { kind: "team" as const, teamId: it.scopeId }
+        : { kind: "committee" as const, committeeId: it.scopeId };
+      const vatPct = it.ocr.total > it.ocr.vatAmount && it.ocr.vatAmount > 0
+        ? Math.round((it.ocr.vatAmount / (it.ocr.total - it.ocr.vatAmount)) * 100) : 15;
+      return {
+        vendor: it.ocr.vendorName.trim(),
+        purpose: it.purpose.trim(),
+        scope,
+        amount: it.ocr.total,
+        vat: vatPct,
+        date: it.ocr.issueDate,
+        imageDataUrl: it.imageDataUrl || undefined,
+        ocr: it.imageDataUrl ? it.ocr : undefined,
+      };
+    });
+    if (inputs.length > 0) addInvoicesBatch(inputs);
     setOpen(false);
   }
+
+  // نصّ زرّ الإرسال (البند ٤): مفردةٌ مطابِقة → «اعتماد»؛ مخالِفة → «طلب اعتماد»؛ متعدّدة → «إرسال الكل».
+  const submitLabel = (() => {
+    if (reviewItems.length === 0) return "إرسال";
+    if (reviewItems.length === 1) return itemAutoApproves(reviewItems[0]) ? "✓ اعتماد" : "طلب اعتماد";
+    return `إرسال الكل (${reviewItems.length})`;
+  })();
 
   const filtered = useMemo(() => invoices.filter(i => {
     if (statusFilter !== "ALL" && i.status !== statusFilter) return false;
@@ -177,7 +253,7 @@ export default function InvoicesPage() {
         action={
           <div className="flex gap-2">
             <Button variant="outline" onClick={exportAll}>⬇ CSV</Button>
-            <Button variant="primary" onClick={openModal}>↑ ارفع فاتورة</Button>
+            <Button variant="primary" onClick={openModal}>↑ ارفع فواتير</Button>
           </div>
         }
       />
@@ -199,18 +275,24 @@ export default function InvoicesPage() {
                 <span className="num text-text">{sar(spendByScope.eventSpend)}</span>
               </div>
             )}
-            {teams.filter(t => spendByScope.teamSpend[t.id]).map(t => (
-              <div key={t.id} className="flex items-center justify-between rounded border border-line px-3 py-2 text-[13px]">
-                <span className="text-text-2">فريق {t.name}</span>
-                <span className="num text-text">{sar(spendByScope.teamSpend[t.id])}</span>
-              </div>
-            ))}
-            {committees.filter(c => spendByScope.commSpend[c.id]).map(c => (
-              <div key={c.id} className="flex items-center justify-between rounded border border-line px-3 py-2 text-[13px]">
-                <span className="text-text-2">{c.name}</span>
-                <span className="num text-text">{sar(spendByScope.commSpend[c.id])}</span>
-              </div>
-            ))}
+            {teams.filter(t => spendByScope.teamSpend[t.id]).map(t => {
+              const b = t.budget ?? 0;
+              return (
+                <div key={t.id} className="flex items-center justify-between rounded border border-line px-3 py-2 text-[13px]">
+                  <span className="text-text-2">فريق {t.name}</span>
+                  <span className="num text-text">{sar(spendByScope.teamSpend[t.id])}{b > 0 ? ` / ${sar(b)}` : ""}</span>
+                </div>
+              );
+            })}
+            {committees.filter(c => spendByScope.commSpend[c.id]).map(c => {
+              const b = c.budget ?? 0;
+              return (
+                <div key={c.id} className="flex items-center justify-between rounded border border-line px-3 py-2 text-[13px]">
+                  <span className="text-text-2">{c.name}</span>
+                  <span className="num text-text">{sar(spendByScope.commSpend[c.id])}{b > 0 ? ` / ${sar(b)}` : ""}</span>
+                </div>
+              );
+            })}
           </div>
         </Card>
       )}
@@ -269,148 +351,171 @@ export default function InvoicesPage() {
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title="رفعُ فاتورةٍ جديدة"
-        subtitle="ارفع صورة/PDF فاتورة الشراء، ويحلّلها الذكاء الاصطناعي تلقائياً. راجِع النتيجة وصحّحها قبل الإرسال."
+        title="رفعُ فواتير"
+        subtitle="ارفع صورة/PDF لفاتورةٍ أو أكثر، ويحلّلها الذكاء الاصطناعي تلقائياً ومتوازياً. راجِع كلّ فاتورة وصحّحها قبل الإرسال."
         size="lg"
-        footer={stage === "review" ? (
+        footer={reviewItems.length > 0 ? (
           <>
             <Button variant="outline" type="button" onClick={() => setOpen(false)}>إلغاء</Button>
-            <Button type="submit" form="add-invoice">إرسال الفاتورة</Button>
+            <Button type="button" onClick={submitAll} disabled={!allReviewValid || analyzingCount > 0}>{submitLabel}</Button>
           </>
         ) : (
           <Button variant="outline" type="button" onClick={() => setOpen(false)}>إغلاق</Button>
         )}
       >
-        {/* اختيار الملف */}
-        {(stage === "pick" || stage === "error") && (
-          <div className="grid gap-4">
-            <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-line-strong bg-bg-raised px-6 py-10 text-center hover:border-accent">
-              <span className="text-[28px]">📄</span>
-              <span className="text-[14px] text-text">اضغط لاختيار صورة أو ملف PDF للفاتورة</span>
-              <span className="text-[12px] text-text-3">JPG · PNG · WebP · GIF · PDF — حتى ٥ ميغابايت</span>
-              <input ref={fileRef} type="file" accept="image/*,application/pdf" className="hidden"
-                onChange={e => onFile(e.target.files?.[0])} />
-            </label>
-            {stage === "error" && (
-              <div className="rounded border border-critical/40 bg-critical/5 px-3 py-2 text-[13px] text-critical">
-                {err}
-                <button type="button" className="ms-2 underline" onClick={() => { setStage("pick"); setErr(""); }}>حاول مجدداً</button>
+        <div className="grid gap-4">
+          {/* اختيار الملفّات */}
+          <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-line-strong bg-bg-raised px-6 py-6 text-center hover:border-accent">
+            <span className="text-[24px]">📄</span>
+            <span className="text-[14px] text-text">اضغط لاختيار صورة/صور أو ملفات PDF (يمكن اختيار عدّة ملفات)</span>
+            <span className="text-[12px] text-text-3">JPG · PNG · WebP · GIF · PDF — حتى ٥ ميغابايت للملف</span>
+            <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple className="hidden"
+              onChange={e => onFiles(e.target.files)} />
+          </label>
+          {pickErr && <p className="text-[12.5px] text-critical">{pickErr}</p>}
+
+          {/* شريط التقدّم */}
+          {items.length > 0 && analyzingCount > 0 && (
+            <div className="flex items-center gap-2 text-[12.5px] text-text-2">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-accent" />
+              يُحلّل {items.length - analyzingCount} من {items.length}…
+            </div>
+          )}
+
+          {/* تبويبات التنقّل بين الفواتير */}
+          {items.length > 0 && (
+            <div className="flex flex-wrap gap-2 border-b border-line pb-3">
+              {items.map((it, i) => {
+                const ok = it.stage === "review";
+                const bad = it.stage === "error";
+                const icon = it.stage === "analyzing" ? "…" : bad ? "✗" : ok && itemAutoApproves(it) ? "✓" : ok ? "⚠" : "";
+                return (
+                  <button key={it.id} type="button" onClick={() => setActiveIdx(i)}
+                    className={`flex items-center gap-1.5 rounded border px-2.5 py-1.5 text-[12px] ${i === activeIdx ? "border-accent bg-accent/5 text-text" : "border-line text-text-2 hover:bg-bg-raised"}`}>
+                    <span className={bad ? "text-critical" : ok && itemAutoApproves(it) ? "text-ok" : ok ? "text-warn" : "text-text-3"}>{icon}</span>
+                    <span className="max-w-[120px] truncate">{it.ocr.vendorName || it.fileName || `فاتورة ${i + 1}`}</span>
+                    <span role="button" tabIndex={0} aria-label="إزالة" className="ms-1 text-text-3 hover:text-critical"
+                      onClick={e => { e.stopPropagation(); removeItem(it.id); }}>×</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* العنصر النشط */}
+          {active && active.stage === "analyzing" && (
+            <div className="flex flex-col items-center gap-3 py-10 text-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-accent" />
+              <p className="text-[14px] text-text-2">يُحلّل الذكاء الاصطناعي هذه الفاتورة…</p>
+            </div>
+          )}
+
+          {active && active.stage === "error" && (
+            <div className="rounded border border-critical/40 bg-critical/5 px-3 py-3 text-[13px] text-critical">
+              {active.err}
+              <button type="button" className="ms-2 underline" onClick={() => retryItem(active)}>إعادة المحاولة</button>
+            </div>
+          )}
+
+          {active && active.stage === "review" && (
+            <div className="grid gap-4">
+              {active.imageDataUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={active.imageDataUrl} alt="معاينة الفاتورة" className="max-h-48 w-auto self-center rounded border border-line" />
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="المورّد" value={active.ocr.vendorName} onChange={e => patchOcr({ vendorName: e.target.value })} required />
+                <Field label="رقم الفاتورة" value={active.ocr.invoiceNumber} onChange={e => patchOcr({ invoiceNumber: e.target.value })} />
               </div>
-            )}
-          </div>
-        )}
-
-        {/* أثناء التحليل */}
-        {stage === "analyzing" && (
-          <div className="flex flex-col items-center gap-3 py-12 text-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-accent" />
-            <p className="text-[14px] text-text-2">يُحلّل الذكاء الاصطناعي الفاتورة…</p>
-          </div>
-        )}
-
-        {/* المراجعة والتصحيح */}
-        {stage === "review" && (
-          <form id="add-invoice" onSubmit={submit} className="grid gap-4">
-            {imageDataUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={imageDataUrl} alt="معاينة الفاتورة" className="max-h-56 w-auto self-center rounded border border-line" />
-            )}
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="المورّد" value={ocr.vendorName} onChange={e => setOcr({ ...ocr, vendorName: e.target.value })} required />
-              <Field label="رقم الفاتورة" value={ocr.invoiceNumber} onChange={e => setOcr({ ...ocr, invoiceNumber: e.target.value })} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="التاريخ (YYYY-MM-DD)" value={ocr.issueDate} onChange={e => setOcr({ ...ocr, issueDate: e.target.value })} placeholder="2026-01-01" />
-              <Field label="الرقم الضريبي للمورّد" inputMode="numeric" value={ocr.vendorTaxNumber} onChange={e => setOcr({ ...ocr, vendorTaxNumber: e.target.value })} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="اسم الجمعية (كما في الفاتورة)" value={ocr.associationName} onChange={e => setOcr({ ...ocr, associationName: e.target.value })} />
-              <Field label="الرقم الضريبي للجمعية" inputMode="numeric" value={ocr.associationTaxNumber} onChange={e => setOcr({ ...ocr, associationTaxNumber: e.target.value })} />
-            </div>
-
-            <label className="flex items-center gap-2 text-[13.5px] text-text-2">
-              <input type="checkbox" checked={ocr.isTaxInvoice} onChange={e => setOcr({ ...ocr, isTaxInvoice: e.target.checked })} />
-              فاتورة ضريبيّة (تحمل هذا الوصف صراحةً)
-            </label>
-
-            {/* البنود */}
-            <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <span className="text-[12px] tracking-[.12em] text-text-3">البنود</span>
-                <button type="button" className="text-[12px] text-accent hover:underline" onClick={addItem}>+ إضافة بند</button>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="التاريخ (YYYY-MM-DD)" value={active.ocr.issueDate} onChange={e => patchOcr({ issueDate: e.target.value })} placeholder="2026-01-01" />
+                <Field label="الرقم الضريبي للمورّد" inputMode="numeric" value={active.ocr.vendorTaxNumber} onChange={e => patchOcr({ vendorTaxNumber: e.target.value })} />
               </div>
-              <div className="grid gap-2">
-                {ocr.lineItems.length === 0 && <p className="text-[12px] text-text-3">لا بنود — أضِف بنداً واحداً على الأقل.</p>}
-                {ocr.lineItems.map((it, idx) => (
-                  <div key={idx} className="grid grid-cols-[1fr_60px_80px_80px_28px] items-center gap-2">
-                    <input value={it.description} onChange={e => updateItem(idx, { description: e.target.value })} placeholder="الوصف" className="rounded border border-line-strong bg-surface px-2 py-1.5 text-[13px]" />
-                    <input type="number" min={0} value={it.quantity} onChange={e => updateItem(idx, { quantity: Number(e.target.value) })} placeholder="كميّة" className="num rounded border border-line-strong bg-surface px-2 py-1.5 text-[13px]" />
-                    <input type="number" min={0} value={it.unitPrice} onChange={e => updateItem(idx, { unitPrice: Number(e.target.value) })} placeholder="سعر" className="num rounded border border-line-strong bg-surface px-2 py-1.5 text-[13px]" />
-                    <input type="number" min={0} value={it.total} onChange={e => updateItem(idx, { total: Number(e.target.value) })} placeholder="إجمالي" className="num rounded border border-line-strong bg-surface px-2 py-1.5 text-[13px]" />
-                    <button type="button" className="text-critical hover:opacity-70" onClick={() => removeItem(idx)}>×</button>
-                  </div>
-                ))}
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="اسم الجمعية (كما في الفاتورة)" value={active.ocr.associationName} onChange={e => patchOcr({ associationName: e.target.value })} />
+                <Field label="الرقم الضريبي للجمعية" inputMode="numeric" value={active.ocr.associationTaxNumber} onChange={e => patchOcr({ associationTaxNumber: e.target.value })} />
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="مبلغ الضريبة" type="number" min={0} value={ocr.vatAmount} onChange={e => setOcr({ ...ocr, vatAmount: Number(e.target.value) })} />
-              <Field label="الإجمالي (شامل الضريبة)" type="number" min={0} value={ocr.total} onChange={e => setOcr({ ...ocr, total: Number(e.target.value) })} required />
-            </div>
-
-            <TextArea label="الغرض" value={purpose} onChange={e => setPurpose(e.target.value)} required rows={2} placeholder="مثال: مستلزمات فعاليّة اللجنة العلميّة" />
-
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">المصروف على</span>
-                <select value={scopeKind} onChange={e => setScopeKind(e.target.value as "event" | "team" | "committee")} className="w-full rounded border border-line-strong bg-surface px-3 py-2 text-[14px]">
-                  <option value="event">الفعاليّة كاملة</option>
-                  <option value="team">فريق</option>
-                  <option value="committee">لجنة</option>
-                </select>
+              <label className="flex items-center gap-2 text-[13.5px] text-text-2">
+                <input type="checkbox" checked={active.ocr.isTaxInvoice} onChange={e => patchOcr({ isTaxInvoice: e.target.checked })} />
+                فاتورة ضريبيّة (تحمل هذا الوصف صراحةً)
               </label>
-              {scopeKind !== "event" && (
+
+              {/* البنود */}
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[12px] tracking-[.12em] text-text-3">البنود</span>
+                  <button type="button" className="text-[12px] text-accent hover:underline" onClick={addLine}>+ إضافة بند</button>
+                </div>
+                <div className="grid gap-2">
+                  {active.ocr.lineItems.length === 0 && <p className="text-[12px] text-text-3">لا بنود — أضِف بنداً واحداً على الأقل.</p>}
+                  {active.ocr.lineItems.map((it, idx) => (
+                    <div key={idx} className="grid grid-cols-[1fr_60px_80px_80px_28px] items-center gap-2">
+                      <input value={it.description} onChange={e => updateLine(idx, { description: e.target.value })} placeholder="الوصف" className="rounded border border-line-strong bg-surface px-2 py-1.5 text-[13px]" />
+                      <input type="number" min={0} value={it.quantity} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} placeholder="كميّة" className="num rounded border border-line-strong bg-surface px-2 py-1.5 text-[13px]" />
+                      <input type="number" min={0} value={it.unitPrice} onChange={e => updateLine(idx, { unitPrice: Number(e.target.value) })} placeholder="سعر" className="num rounded border border-line-strong bg-surface px-2 py-1.5 text-[13px]" />
+                      <input type="number" min={0} value={it.total} onChange={e => updateLine(idx, { total: Number(e.target.value) })} placeholder="إجمالي" className="num rounded border border-line-strong bg-surface px-2 py-1.5 text-[13px]" />
+                      <button type="button" className="text-critical hover:opacity-70" onClick={() => removeLine(idx)}>×</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="مبلغ الضريبة" type="number" min={0} value={active.ocr.vatAmount} onChange={e => patchOcr({ vatAmount: Number(e.target.value) })} />
+                <Field label="الإجمالي (شامل الضريبة)" type="number" min={0} value={active.ocr.total} onChange={e => patchOcr({ total: Number(e.target.value) })} required />
+              </div>
+
+              <TextArea label="الغرض" value={active.purpose} onChange={e => patchActive({ purpose: e.target.value })} required rows={2} placeholder="مثال: مستلزمات فعاليّة اللجنة العلميّة" />
+
+              <div className="grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">{scopeKind === "team" ? "الفريق" : "اللجنة"}</span>
-                  <select value={scopeId} onChange={e => setScopeId(e.target.value)} className="w-full rounded border border-line-strong bg-surface px-3 py-2 text-[14px]">
-                    {scopeKind === "team"
-                      ? teams.map(t => <option key={t.id} value={t.id}>فريق {t.name}</option>)
-                      : committees.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">المصروف على</span>
+                  <select value={active.scopeKind} onChange={e => patchActive({ scopeKind: e.target.value as "event" | "team" | "committee", scopeId: defaultScopeId })} className="w-full rounded border border-line-strong bg-surface px-3 py-2 text-[14px]">
+                    <option value="event">الفعاليّة كاملة</option>
+                    <option value="team">فريق</option>
+                    <option value="committee">لجنة</option>
                   </select>
                 </label>
-              )}
-            </div>
-
-            {/* لوحة الشروط السبعة الحيّة */}
-            <div className={`rounded-lg border px-4 py-3 ${willAutoApprove ? "border-ok/40 bg-ok/5" : "border-warn/40 bg-warn/5"}`}>
-              <div className="mb-2 text-[13px] font-semibold text-text">
-                {willAutoApprove
-                  ? "✓ مستوفية للشروط — ستُعتمَد تلقائياً عند الإرسال."
-                  : "⚠ اختلّ شرطٌ إلزاميّ — ستُرسَل للأمير/نائبه للمراجعة."}
+                {active.scopeKind !== "event" && (
+                  <label className="block">
+                    <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">{active.scopeKind === "team" ? "الفريق" : "اللجنة"}</span>
+                    <select value={active.scopeId} onChange={e => patchActive({ scopeId: e.target.value })} className="w-full rounded border border-line-strong bg-surface px-3 py-2 text-[14px]">
+                      {active.scopeKind === "team"
+                        ? teams.map(t => <option key={t.id} value={t.id}>فريق {t.name}</option>)
+                        : committees.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </label>
+                )}
               </div>
-              <ul className="grid grid-cols-1 gap-1 text-[12.5px] sm:grid-cols-2">
-                {(Object.keys(CONDITION_LABELS) as (keyof typeof CONDITION_LABELS)[]).map(k => {
-                  const pass = liveConditions[k];
-                  const required = conditionsPolicy[k];
-                  return (
-                    <li key={k} className={`flex items-center gap-2 ${!required ? "opacity-40" : ""}`}>
-                      <span className={pass ? "text-ok" : "text-critical"}>{pass ? "✓" : "✗"}</span>
-                      <span className="text-text-2">{CONDITION_LABELS[k]}{!required && " (غير مُفعّل)"}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-              {!associationName && !associationTaxNumber && (
-                <p className="mt-2 text-[11.5px] text-text-3">لم تُضبَط هويّة الجمعية بعد (الاسم/الرقم الضريبي) في الإعدادات — لذا شرطا الجمعية لن يتحققا وستُحال الفاتورة للأمير.</p>
-              )}
-            </div>
 
-            {!canApprove && (
-              <p className="text-[12px] text-text-3">ملاحظة: القرار النهائيّ للأمير/نائبه؛ إن اختلّ شرطٌ ستصل الفاتورة إليهم للاعتماد.</p>
-            )}
-          </form>
-        )}
+              {/* لوحة الشروط السبعة الحيّة */}
+              <div className={`rounded-lg border px-4 py-3 ${activeAutoApprove ? "border-ok/40 bg-ok/5" : "border-warn/40 bg-warn/5"}`}>
+                <div className="mb-2 text-[13px] font-semibold text-text">
+                  {activeAutoApprove
+                    ? "✓ مستوفية للشروط — ستُعتمَد تلقائياً عند الإرسال."
+                    : "⚠ اختلّ شرطٌ إلزاميّ — ستُرسَل للأمير/نائبه للمراجعة."}
+                </div>
+                <ul className="grid grid-cols-1 gap-1 text-[12.5px] sm:grid-cols-2">
+                  {(Object.keys(CONDITION_LABELS) as (keyof typeof CONDITION_LABELS)[]).map(k => {
+                    const pass = liveConditions![k];
+                    const required = conditionsPolicy[k];
+                    return (
+                      <li key={k} className={`flex items-center gap-2 ${!required ? "opacity-40" : ""}`}>
+                        <span className={pass ? "text-ok" : "text-critical"}>{pass ? "✓" : "✗"}</span>
+                        <span className="text-text-2">{CONDITION_LABELS[k]}{!required && " (غير مُفعّل)"}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {!associationName && !associationTaxNumber && (
+                  <p className="mt-2 text-[11.5px] text-text-3">لم تُضبَط هويّة الجمعية بعد (الاسم/الرقم الضريبي) في الإعدادات — لذا شرطا الجمعية لن يتحققا وستُحال الفاتورة للأمير.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   );

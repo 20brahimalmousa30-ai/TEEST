@@ -12,6 +12,7 @@ import { Modal, Confirm } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Field";
 import { useStore } from "@/lib/store/StoreProvider";
 import { useSession } from "@/lib/auth/session";
+import { BudgetEditor } from "@/components/BudgetEditor";
 import { downloadCSV } from "@/lib/download";
 import { fileToDataUrl, extractDominantColor } from "@/lib/image";
 import type { Student } from "@/lib/mock/types";
@@ -22,7 +23,7 @@ const sections = ["ريادة", "علو", "قيادة"] as const;
 export default function TeamDetail() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { teams, students, supervisors, deleteTeam, addStudent, updateTeam } = useStore();
+  const { teams, students, supervisors, invoices, deleteTeam, addStudent, updateTeam, setTeamBudget } = useStore();
   const { session } = useSession();
   // رقم الهوية الكامل للإدارة فقط؛ غيرهم يرى القناع.
   const canApprove = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
@@ -196,6 +197,15 @@ export default function TeamDetail() {
                 {imgErr && <p className="mt-1 text-[12px] text-critical">{imgErr}</p>}
               </div>
             </div>
+          </Card>
+
+          <Card title="موازنة الفريق">
+            <BudgetEditor
+              budget={team.budget ?? 0}
+              spent={invoices.filter(i => (i.status === "approved" || i.status === "paid") && i.scope.kind === "team" && i.scope.teamId === team.id).reduce((s, i) => s + i.amount, 0)}
+              canEdit={canApprove}
+              onSave={n => setTeamBudget(team.id, n)}
+            />
           </Card>
 
           <Card title="الإجراءات">

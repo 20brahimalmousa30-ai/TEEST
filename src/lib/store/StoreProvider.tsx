@@ -9,7 +9,8 @@ import {
   dbSubmitReceipt, dbReviewReceipt,
   dbAddSupervisor, dbUpdateSupervisor, dbDeleteSupervisor, dbImportSupervisors,
   dbAddCommittee, dbUpdateCommittee, dbDeleteCommittee,
-  dbAddInvoice, dbApproveInvoice, dbRejectInvoice, dbDeleteInvoice, dbRestoreInvoice, dbAnalyzeInvoice,
+  dbSetTeamBudget, dbSetCommitteeBudget,
+  dbAddInvoice, dbAddInvoices, dbApproveInvoice, dbRejectInvoice, dbDeleteInvoice, dbRestoreInvoice, dbAnalyzeInvoice,
   dbToggleRegField, dbReorderRegField, dbAddRegField, dbUpdateRegField, dbRemoveRegField, dbSetRegOpen,
   dbToggleAttendance, dbSetLogoDisplayMode, dbResetAll,
   dbSetMotivations, dbSetTickerPhrases, dbSetTripMessage, dbSetPostRegisterNote,
@@ -22,6 +23,12 @@ import { evaluateConditions, passesPolicy } from "@/lib/ai/conditions";
 
 export type RegField = {
   key: string; label: string; type: string; required: boolean; active: boolean; desc: string;
+};
+
+export type InvoiceInput = {
+  vendor: string; purpose: string; scope: Invoice["scope"];
+  amount: number; vat: number; date: string;
+  imageDataUrl?: string; ocr?: OcrExtraction;
 };
 
 const initialFields: RegField[] = [
@@ -113,6 +120,8 @@ export type StoreActions = {
   addTeam(name: string, color: string, badge: string, supervisorId: string, tagline: string): void;
   updateTeam(id: string, patch: Partial<Team>): void;
   deleteTeam(id: string): void;
+  /** موازنة الفريق — للأمير/نائبه فقط */
+  setTeamBudget(id: string, budget: number): void;
   // Students
   addStudent(input: Omit<Student, "id" | "nationalIdMasked" | "points" | "attendance">): void;
   /** Public registration path — always creates an APPROVAL-pending record */
@@ -138,14 +147,14 @@ export type StoreActions = {
   addCommittee(name: string, description: string, supervisorIds: string[], color: string, imageDataUrl?: string): void;
   updateCommittee(id: string, patch: Partial<Committee>): void;
   deleteCommittee(id: string): void;
+  /** موازنة اللجنة — للأمير/نائبه فقط */
+  setCommitteeBudget(id: string, budget: number): void;
   // Invoices
   /** يحلّل صورة فاتورة (base64 data URL) بالذكاء الاصطناعي — قراءةٌ مباشرة (لا متفائلة). */
   analyzeInvoice(imageDataUrl: string): Promise<OcrExtraction>;
-  addInvoice(input: {
-    vendor: string; purpose: string; scope: Invoice["scope"];
-    amount: number; vat: number; date: string;
-    imageDataUrl?: string; ocr?: OcrExtraction;
-  }): void;
+  addInvoice(input: InvoiceInput): void;
+  /** إضافةُ دفعةِ فواتير معاً (رفعٌ متعدّد) — إدراجٌ خادميٌّ متسلسلٌ في استدعاءٍ واحد. */
+  addInvoicesBatch(inputs: InvoiceInput[]): void;
   approveInvoice(id: string): void;
   rejectInvoice(id: string): void;
   deleteInvoice(id: string): void;
@@ -185,6 +194,21 @@ type Store = State & StoreActions & { hydrated: boolean; loadError: boolean; ret
 const StoreContext = createContext<Store | null>(null);
 
 const uid = (prefix: string) => `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+
+/** يبني فاتورةً متفائلةً للعرض الفوريّ (تقييمُ الشروط يطابق منطق الخادم؛ تُصحَّح بالمزامنة). */
+function makeOptimisticInvoice(input: InvoiceInput, assocName: string, assocTax: string, policy: ConditionsPolicy): Invoice {
+  const conditions = evaluateConditions(input.ocr ?? null, assocName, assocTax);
+  const status: Invoice["status"] = input.ocr && passesPolicy(conditions, policy) ? "approved" : "pending";
+  return {
+    id: uid("inv"), code: `INV-1448-${String(1000 + Math.floor(Math.random() * 8999))}`,
+    vendor: input.vendor, purpose: input.purpose, scope: input.scope,
+    amount: input.amount, vat: input.vat, date: input.date,
+    status, extractedByAI: !!input.ocr,
+    lineItems: input.ocr?.lineItems, conditions,
+    vendorTaxNumber: input.ocr?.vendorTaxNumber, invoiceNumber: input.ocr?.invoiceNumber,
+    submittedAt: new Date().toISOString(), hasImage: !!input.imageDataUrl,
+  };
+}
 
 /** رمزُ دخولٍ عشوائيٌّ آمنٌ تشفيرياً (٨ خانات، أبجديّةٌ خاليةٌ من الأحرف المُلتبِسة).
  *  يستخدم مولّدَ الأرقام العشوائيّة الآمن في المتصفّح بدلاً من Math.random. */
@@ -251,6 +275,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         students: s.students.filter(st => st.teamId !== id),
       }));
       persist(() => dbDeleteTeam(id));
+    },
+    setTeamBudget(id, budget) {
+      const b = Math.max(0, Math.round(budget));
+      update(s => ({ teams: s.teams.map(t => t.id === id ? { ...t, budget: b } : t) }));
+      persist(() => dbSetTeamBudget(id, b));
     },
 
     addStudent(input) {
@@ -410,32 +439,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       update(s => ({ committees: s.committees.filter(x => x.id !== id) }));
       persist(() => dbDeleteCommittee(id));
     },
+    setCommitteeBudget(id, budget) {
+      const b = Math.max(0, Math.round(budget));
+      update(s => ({ committees: s.committees.map(x => x.id === id ? { ...x, budget: b } : x) }));
+      persist(() => dbSetCommitteeBudget(id, b));
+    },
 
     analyzeInvoice(imageDataUrl) {
       return dbAnalyzeInvoice(imageDataUrl);
     },
     addInvoice(input) {
-      const nextNo = String(1000 + Math.floor(Math.random() * 8999));
-      update(s => {
-        //  تقييمٌ متفائلٌ للشروط (يطابق منطق الخادم) لعرض الحالة فوراً؛ يُصحَّح بالمزامنة.
-        const conditions = evaluateConditions(input.ocr ?? null, s.associationName, s.associationTaxNumber);
-        const status: Invoice["status"] =
-          input.ocr && passesPolicy(conditions, s.conditionsPolicy) ? "approved" : "pending";
-        const inv: Invoice = {
-          id: uid("inv"), code: `INV-1448-${nextNo}`,
-          vendor: input.vendor, purpose: input.purpose, scope: input.scope,
-          amount: input.amount, vat: input.vat, date: input.date,
-          status, extractedByAI: !!input.ocr,
-          lineItems: input.ocr?.lineItems,
-          conditions,
-          vendorTaxNumber: input.ocr?.vendorTaxNumber,
-          invoiceNumber: input.ocr?.invoiceNumber,
-          submittedAt: new Date().toISOString(),
-          hasImage: !!input.imageDataUrl,
-        };
-        return { invoices: [inv, ...s.invoices] };
-      });
-      persist(() => dbAddInvoice(input));
+      update(s => ({ invoices: [makeOptimisticInvoice(input, s.associationName, s.associationTaxNumber, s.conditionsPolicy), ...s.invoices] }));
+      persist(() => dbAddInvoices([input]));
+    },
+    addInvoicesBatch(inputs) {
+      if (inputs.length === 0) return;
+      update(s => ({
+        invoices: [
+          ...inputs.map(i => makeOptimisticInvoice(i, s.associationName, s.associationTaxNumber, s.conditionsPolicy)),
+          ...s.invoices,
+        ],
+      }));
+      //  إدراجٌ خادميٌّ متسلسلٌ في استدعاءٍ واحد (يمنع سباق الاستدعاءات وضياع فاتورة).
+      persist(() => dbAddInvoices(inputs));
     },
     approveInvoice(id) {
       update(s => ({ invoices: s.invoices.map(i => i.id === id ? { ...i, status: "approved" } : i) }));

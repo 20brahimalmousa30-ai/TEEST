@@ -42,7 +42,8 @@ create table if not exists teams (
   supervisor_id text references supervisors(id) on delete set null,
   student_count integer not null default 0,
   points        integer not null default 0,
-  tagline       text not null default ''
+  tagline       text not null default '',
+  budget        integer not null default 0   -- موازنة الفريق (ر.س) — للأمير/نائبه تعديلها
 );
 
 -- ── اللجان ───────────────────────────────────────────────────────────────
@@ -51,7 +52,8 @@ create table if not exists committees (
   name           text not null,
   supervisor_ids text[] not null default '{}',
   description    text not null default '',
-  color          text not null default '#1E4635'
+  color          text not null default '#1E4635',
+  budget         integer not null default 0   -- موازنة اللجنة (ر.س) — للأمير/نائبه تعديلها
 );
 
 -- ── ربط المشرفين بالفرق واللجان (many-to-many حقيقي) ──────────────────────
@@ -442,3 +444,11 @@ exception when others then null; end $$;
 alter table app_settings add column if not exists association_name     text;
 alter table app_settings add column if not exists association_tax_number text;
 alter table app_settings add column if not exists conditions_policy    jsonb;
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  موازنة اللجان والفرق (عرضٌ فقط أثناء الاعتماد — لا تمنع الاعتماد التلقائي)
+--  يعدّلها الأمير/نائبه فقط (dbSetTeamBudget/dbSetCommitteeBudget بحارس requireAdmin).
+--  ⚠️ شغّل هذين السطرين في Supabase قبل نشر الشيفرة التي تعتمد عليهما.
+-- ═══════════════════════════════════════════════════════════════════════
+alter table teams      add column if not exists budget integer not null default 0;
+alter table committees add column if not exists budget integer not null default 0;

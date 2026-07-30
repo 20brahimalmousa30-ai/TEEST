@@ -133,8 +133,11 @@ function readPhrases(value: unknown, fallback: string[]): string[] {
   return value.filter((x): x is string => typeof x === "string" && x.trim() !== "");
 }
 
+// عدّادٌ تصاعديّ يضمن تفرّد المعرّفات حتى عند توليد عدّةٍ في نفس المِلّي ثانية
+//  (مثل إدراج دفعة فواتير متعدّدة في استدعاءٍ واحد) — يمنع تصادم المفتاح الأساسيّ.
+let uidCounter = 0;
 const uid = (prefix: string) =>
-  `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+  `${prefix}${Date.now().toString(36)}${(uidCounter++).toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
 const maskNid = () => "••••••" + Math.floor(1000 + Math.random() * 8999);
 
@@ -592,6 +595,18 @@ export async function dbDeleteCommittee(id: string) {
   await db.from("committees").delete().eq("id", id);
 }
 
+/* ─────────────────────── موازنة اللجان والفرق (للأمير/نائبه فقط) ───────────────────────
+ * تعديل الموازنة حسّاسٌ ماليّاً — نحرسه بـ requireAdmin (لا يكفي إذنُ «الفرق»/«اللجان»).
+ * الموازنة عرضٌ فقط أثناء الاعتماد ولا تمنع الاعتماد التلقائي. */
+export async function dbSetTeamBudget(id: string, budget: number) {
+  await requireAdmin();
+  await getSupabase().from("teams").update({ budget: Math.max(0, Math.round(budget)) }).eq("id", id);
+}
+export async function dbSetCommitteeBudget(id: string, budget: number) {
+  await requireAdmin();
+  await getSupabase().from("committees").update({ budget: Math.max(0, Math.round(budget)) }).eq("id", id);
+}
+
 /* ─────────────────────────── الفواتير ─────────────────────────── */
 
 // حدودٌ أمنيّة خادميّة (لا الواجهة فقط): نوعٌ مسموح + حدٌّ أقصى للحجم. الواجهة قد
@@ -634,47 +649,55 @@ type AddInvoiceInput = {
   ocr?: OcrExtraction;     // الاستخلاص (بعد تصحيح المشرف) — لتقييم الشروط وتثبيت البنود
 };
 
-export async function dbAddInvoice(input: AddInvoiceInput) {
-  const session = await requirePermission("invoices");
-  const db = getSupabase();
-
-  // هويّة الجمعية المسجّلة وسياسة الشروط — من الإعدادات خادميّاً (لا يُوثَق بقيمة العميل).
-  const { data: st } = await db.from("app_settings")
+// إعداداتُ هويّة الجمعية وسياسة الشروط — تُقرأ مرّةً وتُستعمَل لكلّ فواتير الدفعة.
+type InvoiceSettings = { name: string; tax: string; policy: ConditionsPolicy };
+async function readInvoiceSettings(): Promise<InvoiceSettings> {
+  const { data: st } = await getSupabase().from("app_settings")
     .select("association_name,association_tax_number,conditions_policy").eq("id", 1).single();
-  const policy = (st?.conditions_policy as ConditionsPolicy | null) ?? DEFAULT_CONDITIONS_POLICY;
+  return {
+    name: st?.association_name ?? "",
+    tax: st?.association_tax_number ?? "",
+    policy: (st?.conditions_policy as ConditionsPolicy | null) ?? DEFAULT_CONDITIONS_POLICY,
+  };
+}
 
+/** يبني صفَّ الإدراج لفاتورةٍ واحدة مع إعادة تقييمٍ خادميّةٍ للشروط السبعة. */
+function buildInvoiceRow(input: AddInvoiceInput, session: DbSession, cfg: InvoiceSettings) {
   const ocr = input.ocr ?? null;
-  //  إعادة تقييمٍ خادميّةٌ للشروط السبعة (تُثبَّت مع الفاتورة).
-  const conditions = evaluateConditions(ocr, st?.association_name ?? "", st?.association_tax_number ?? "");
-  //  ملفٌّ حُلِّل واستوفى الشروط الإلزاميّة → يُعتمَد تلقائياً. اختلّ شرطٌ (أو إدخالٌ
-  //  يدويٌّ بلا تحليل) → يُرفَع «معلّقاً» لمراجعة الأمير/نائبه.
-  const status: Invoice["status"] = ocr && passesPolicy(conditions, policy) ? "approved" : "pending";
-
+  //  إعادة تقييمٍ خادميّةٌ للشروط (تُثبَّت مع الفاتورة، لا يُوثَق بقيمة العميل).
+  const conditions = evaluateConditions(ocr, cfg.name, cfg.tax);
+  //  حُلِّلت واستوفت الشروط الإلزاميّة → تُعتمَد تلقائياً؛ وإلا (أو إدخالٌ يدويٌّ) → «معلّقة» للأمير.
+  const status: Invoice["status"] = ocr && passesPolicy(conditions, cfg.policy) ? "approved" : "pending";
   const img = input.imageDataUrl ? validateInvoiceImage(input.imageDataUrl).dataUrl : null;
   const nextNo = String(1000 + Math.floor(Math.random() * 8999));
-  await db.from("invoices").insert({
+  return {
     ...invoiceToRow({
-      vendor: input.vendor,
-      purpose: input.purpose,
-      scope: input.scope,
-      amount: input.amount,
-      vat: input.vat,
-      date: input.date,
-      extractedByAI: !!ocr,
-      lineItems: ocr?.lineItems,
-      conditions,
-      vendorTaxNumber: ocr?.vendorTaxNumber,
-      invoiceNumber: ocr?.invoiceNumber,
-      uploadedBy: session.supervisorId ?? undefined,
-      submittedAt: new Date().toISOString(),
+      vendor: input.vendor, purpose: input.purpose, scope: input.scope,
+      amount: input.amount, vat: input.vat, date: input.date,
+      extractedByAI: !!ocr, lineItems: ocr?.lineItems, conditions,
+      vendorTaxNumber: ocr?.vendorTaxNumber, invoiceNumber: ocr?.invoiceNumber,
+      uploadedBy: session.supervisorId ?? undefined, submittedAt: new Date().toISOString(),
     }),
-    id: uid("inv"),
-    code: `INV-1448-${nextNo}`,
-    in_trash: false,
-    status,
-    image_data_url: img,
-    has_image: !!img,
-  });
+    id: uid("inv"), code: `INV-1448-${nextNo}`, in_trash: false, status,
+    image_data_url: img, has_image: !!img,
+  };
+}
+
+export async function dbAddInvoice(input: AddInvoiceInput) {
+  await dbAddInvoices([input]);
+}
+
+/** إضافةُ دفعةِ فواتير في استدعاءٍ خادميٍّ واحد — إدراجٌ متسلسلٌ مع فحص الأخطاء
+ *  (يمنع سباق الاستدعاءات المتوازية وضياع فاتورةٍ بصمت). */
+export async function dbAddInvoices(inputs: AddInvoiceInput[]) {
+  const session = await requirePermission("invoices");
+  if (inputs.length === 0) return;
+  const db = getSupabase();
+  const cfg = await readInvoiceSettings();
+  for (const input of inputs) {
+    const { error } = await db.from("invoices").insert(buildInvoiceRow(input, session, cfg));
+    if (error) throw new Error(`تعذّر حفظ فاتورة «${input.vendor}»: ${error.message}`);
+  }
 }
 
 //  الاعتماد النهائيّ للأمير/نائبه فقط (لا اعتمادٌ آليٌّ صامتٌ بناءً على الذكاء وحده).

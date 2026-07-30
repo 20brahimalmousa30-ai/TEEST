@@ -11,6 +11,7 @@ export type Team = {
   studentCount: number;
   points: number;
   tagline: string;
+  budget?: number;                   // موازنة الفريق (ر.س) — للأمير/نائبه تعديلها (افتراض 0)
   imageDataUrl?: string;             // شعار/صورة مخصَّصة (base64) — يُشتقّ منها اللون تلقائياً
 };
 
@@ -20,6 +21,7 @@ export type Committee = {
   supervisorIds: string[];
   description: string;
   color: string;
+  budget?: number;                   // موازنة اللجنة (ر.س) — للأمير/نائبه تعديلها (افتراض 0)
   imageDataUrl?: string;             // صورة مخصَّصة (base64) — يُشتقّ منها اللون تلقائياً
 };
 
