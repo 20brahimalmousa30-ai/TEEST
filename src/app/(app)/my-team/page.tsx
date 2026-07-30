@@ -98,7 +98,7 @@ export default function MyTeamPage() {
           action={
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setAttOpen(true)}>✓ تسجيل الحضور</Button>
-              <Button variant="outline" onClick={exportRoster}>⬇ تصدير</Button>
+              <Button variant="outline" onClick={exportRoster}>⬇ تصدير إكسل</Button>
             </div>
           }
           padded={false}

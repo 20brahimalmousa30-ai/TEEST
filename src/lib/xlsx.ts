@@ -32,12 +32,20 @@ export type XlsxOptions = {
   columns: XlsxColumn[];
   rows: (string | number | null | undefined)[][];
   totalsLabel?: string;             // إن وُجد، يُضاف صفُّ إجماليٍّ يجمع أعمدة total
+  serial?: boolean;                 // عمود تسلسل «#» (افتراض: نعم)
 };
 
-/** يُنشئ ملفّ إكسل منسّقاً ويُنزّله. */
+/** يُنشئ ملفّ إكسل منسّقاً واحترافيّاً (جدولٌ منظّم بفلترٍ وفرز) ويُنزّله. */
 export async function exportXlsx(opts: XlsxOptions): Promise<void> {
   const ExcelJS = (await import("exceljs")).default;
-  const { columns, rows } = opts;
+
+  // عمود تسلسلٍ «#» في المقدّمة (يظهر أقصى اليمين في ورقة RTL) — يُنظّم الجدول.
+  const useSerial = opts.serial !== false;
+  const columns: XlsxColumn[] = useSerial
+    ? [{ header: "#", width: 5, align: "center" }, ...opts.columns]
+    : opts.columns;
+  const rows = useSerial ? opts.rows.map((row, i) => [i + 1, ...row]) : opts.rows;
+
   const wb = new ExcelJS.Workbook();
   wb.creator = "منصّة معالي محافظة بلّسمر";
   const ws = wb.addWorksheet(opts.sheetName || "بيانات", {
@@ -126,12 +134,21 @@ export async function exportXlsx(opts: XlsxOptions): Promise<void> {
     r++;
   }
 
-  // ── عرض الأعمدة ──
+  // ── عرض الأعمدة (متكيّفٌ مع المحتوى: أطول قيمةٍ فعليّة، بحدٍّ أدنى/أقصى) ──
   columns.forEach((col, i) => {
-    ws.getColumn(i + 1).width = col.width ?? Math.max(12, Math.min(40, col.header.length + 6));
+    const contentMax = rows.reduce((m, row) => {
+      const v = row[i];
+      const len = v === null || v === undefined ? 0 : String(v).length;
+      return Math.max(m, len);
+    }, col.header.length);
+    const w = Math.max(col.width ?? 0, contentMax + 3);
+    ws.getColumn(i + 1).width = Math.max(6, Math.min(46, w));
   });
 
-  // ── تجميد صفّ الرأس ──
+  // ── فلترٌ وفرزٌ على صفّ الرأس (يجعله جدولاً منظّماً قابلاً للتصفية) ──
+  ws.autoFilter = { from: { row: headerRowIdx, column: 1 }, to: { row: headerRowIdx, column: nCols } };
+
+  // ── تجميد العنوان + الرأس (يبقيان ظاهرَين عند التمرير) ──
   ws.views = [{ rightToLeft: true, state: "frozen", ySplit: headerRowIdx }];
 
   // ── التنزيل ──

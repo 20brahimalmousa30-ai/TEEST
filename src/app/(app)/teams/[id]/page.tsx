@@ -223,7 +223,7 @@ export default function TeamDetail() {
           <Card title="الإجراءات">
             <div className="flex flex-col gap-2">
               <Button variant="outline" onClick={() => setAddOpen(true)}>+ أضف عضواً جديداً</Button>
-              <Button variant="outline" onClick={exportRoster}>⬇ تصدير قائمة الأعضاء (CSV)</Button>
+              <Button variant="outline" onClick={exportRoster}>⬇ تصدير قائمة الأعضاء (إكسل)</Button>
               <Button variant="outline" onClick={whatsappTeam}>↗ فتح واتساب برسالةٍ جاهزة</Button>
               <Button variant="danger"  onClick={() => setDelOpen(true)}>🗑 إلغاء الفريق</Button>
             </div>

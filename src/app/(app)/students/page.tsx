@@ -343,7 +343,7 @@ export default function StudentsPage() {
           <option value="PARTIAL">جزئي</option>
           <option value="PENDING">معلّق</option>
         </select>
-        <Button variant="outline" onClick={exportFiltered}>⬇ تصدير CSV</Button>
+        <Button variant="outline" onClick={exportFiltered}>⬇ تصدير إكسل</Button>
         {canApprove && (
           <Button variant="primary" onClick={exportPdf} disabled={pdfBusy}>
             {pdfBusy ? "…جارٍ التوليد" : "⬇ تصدير PDF"}
