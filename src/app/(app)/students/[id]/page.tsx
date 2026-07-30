@@ -41,6 +41,7 @@ export default function StudentDetail() {
   const [delOpen, setDelOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [receiptImgError, setReceiptImgError] = useState(false);
 
   const s = students.find(x => x.id === params.id);
   const [form, setForm] = useState({
@@ -186,6 +187,42 @@ export default function StudentDetail() {
               </div>
             </div>
           </Card>
+
+          {/* إيصال السداد: يراه الطاقم في أيّ وقت — حتى بعد الاعتماد/الرفض. الصورة
+              تُجلَب عند الطلب عبر المسار الآمن (للطاقم فقط). */}
+          {canManage && s.receiptStatus && (
+            <Card title="إيصال السداد">
+              <div className="grid gap-3">
+                {!receiptImgError ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`/api/students/${s.id}/image?kind=receipt`}
+                    alt="إيصال السداد"
+                    onError={() => setReceiptImgError(true)}
+                    className="w-full rounded border border-line"
+                  />
+                ) : (
+                  <p className="text-[13px] text-text-3">تعذّر تحميل صورة الإيصال.</p>
+                )}
+                <div className="flex items-center justify-between text-[13.5px]">
+                  <span className="text-text-3">الحالة</span>
+                  <Pill variant={s.receiptStatus === "APPROVED" ? "ok" : s.receiptStatus === "REJECTED" ? "critical" : "warn"}>
+                    {s.receiptStatus === "APPROVED" ? "معتمد" : s.receiptStatus === "REJECTED" ? "مرفوض" : "قيد المراجعة"}
+                  </Pill>
+                </div>
+                {s.receiptStatus === "APPROVED" && s.receiptAmount != null && (
+                  <div className="flex items-center justify-between text-[13.5px]">
+                    <span className="text-text-3">المبلغ المعتمد</span><span className="num text-text">{sar(s.receiptAmount)}</span>
+                  </div>
+                )}
+                {s.receiptSubmittedAt && (
+                  <div className="flex items-center justify-between text-[13.5px]">
+                    <span className="text-text-3">تاريخ الرفع</span><span className="num text-text-2">{fmtDate(s.receiptSubmittedAt)}</span>
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
 
           {/* تفاصيل التسجيل: إجابات الحقول المخصّصة التي لا تظهر في رأس الصفحة/بطاقاتها.
               نعرض كلّ حقلٍ نشط، و«لم يُجب» للاختياريّ الذي تركه الطالب فارغاً. */}
