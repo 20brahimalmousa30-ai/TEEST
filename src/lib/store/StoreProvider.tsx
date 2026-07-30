@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import type { Team, Student, Supervisor, Committee, Invoice, PaymentStatus } from "@/lib/mock/types";
+import type { Team, Student, Supervisor, Committee, Invoice, PaymentStatus, OcrExtraction, ConditionsPolicy } from "@/lib/mock/types";
 import {
   loadAllData,
   dbAddTeam, dbUpdateTeam, dbDeleteTeam,
@@ -9,14 +9,16 @@ import {
   dbSubmitReceipt, dbReviewReceipt,
   dbAddSupervisor, dbUpdateSupervisor, dbDeleteSupervisor, dbImportSupervisors,
   dbAddCommittee, dbUpdateCommittee, dbDeleteCommittee,
-  dbAddInvoice, dbApproveInvoice, dbDeleteInvoice, dbRestoreInvoice,
+  dbAddInvoice, dbApproveInvoice, dbRejectInvoice, dbDeleteInvoice, dbRestoreInvoice, dbAnalyzeInvoice,
   dbToggleRegField, dbReorderRegField, dbAddRegField, dbUpdateRegField, dbRemoveRegField, dbSetRegOpen,
   dbToggleAttendance, dbSetLogoDisplayMode, dbResetAll,
   dbSetMotivations, dbSetTickerPhrases, dbSetTripMessage, dbSetPostRegisterNote,
   dbSetLogoUrl, dbSetBrandColors, dbSetPageMarquees,
+  dbSetAssociationIdentity, dbSetConditionsPolicy,
 } from "@/lib/db/data";
 import { motivations as DEFAULT_MOTIVATIONS, tickerPhrases as DEFAULT_TICKER } from "@/lib/motivations";
 import type { PageMarquee, PageMarqueeMap } from "@/lib/pageMarquees";
+import { evaluateConditions, passesPolicy } from "@/lib/ai/conditions";
 
 export type RegField = {
   key: string; label: string; type: string; required: boolean; active: boolean; desc: string;
@@ -71,6 +73,12 @@ export type State = {
   brandColors: BrandColors | null;
   /** خلفيّة تحفيزيّة متحرّكة لكلّ صفحة — يُحرّرها الأمير (المفتاح = صفحة) */
   pageMarquees: PageMarqueeMap;
+  /** اسم الجمعية الرسميّ — لمطابقة شرط اسم الجمعية في تحليل الفواتير */
+  associationName: string;
+  /** الرقم الضريبي للجمعية — لمطابقة شرط الرقم الضريبي */
+  associationTaxNumber: string;
+  /** سياسة الشروط الإلزاميّة لاعتماد الفواتير تلقائياً */
+  conditionsPolicy: ConditionsPolicy;
 };
 
 const initialState: State = {
@@ -92,6 +100,12 @@ const initialState: State = {
   logoVersion:   0,
   brandColors:   null,
   pageMarquees:  {},
+  associationName: "",
+  associationTaxNumber: "",
+  conditionsPolicy: {
+    taxInvoice: true, associationName: true, associationTaxNumber: true,
+    vendorTaxNumber: true, issueDate: true, serviceDetails: true, quantityAndTotal: true,
+  },
 };
 
 export type StoreActions = {
@@ -125,8 +139,15 @@ export type StoreActions = {
   updateCommittee(id: string, patch: Partial<Committee>): void;
   deleteCommittee(id: string): void;
   // Invoices
-  addInvoice(input: Omit<Invoice, "id" | "code">): void;
+  /** يحلّل صورة فاتورة (base64 data URL) بالذكاء الاصطناعي — قراءةٌ مباشرة (لا متفائلة). */
+  analyzeInvoice(imageDataUrl: string): Promise<OcrExtraction>;
+  addInvoice(input: {
+    vendor: string; purpose: string; scope: Invoice["scope"];
+    amount: number; vat: number; date: string;
+    imageDataUrl?: string; ocr?: OcrExtraction;
+  }): void;
   approveInvoice(id: string): void;
+  rejectInvoice(id: string): void;
   deleteInvoice(id: string): void;
   restoreInvoice(id: string): void;
   // Registration
@@ -152,6 +173,9 @@ export type StoreActions = {
   setBrandColors(colors: BrandColors | null): void;
   // Per-page background marquee (Prince only)
   setPageMarquee(key: string, cfg: PageMarquee): void;
+  // Association identity + invoice conditions policy (Prince only)
+  setAssociationIdentity(name: string, taxNumber: string): void;
+  setConditionsPolicy(policy: ConditionsPolicy): void;
   // Reset
   resetAll(): void;
 };
@@ -387,16 +411,45 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       persist(() => dbDeleteCommittee(id));
     },
 
+    analyzeInvoice(imageDataUrl) {
+      return dbAnalyzeInvoice(imageDataUrl);
+    },
     addInvoice(input) {
       const nextNo = String(1000 + Math.floor(Math.random() * 8999));
-      update(s => ({
-        invoices: [{ ...input, id: uid("inv"), code: `INV-1448-${nextNo}` }, ...s.invoices],
-      }));
+      update(s => {
+        //  تقييمٌ متفائلٌ للشروط (يطابق منطق الخادم) لعرض الحالة فوراً؛ يُصحَّح بالمزامنة.
+        const conditions = evaluateConditions(input.ocr ?? null, s.associationName, s.associationTaxNumber);
+        const status: Invoice["status"] =
+          input.ocr && passesPolicy(conditions, s.conditionsPolicy) ? "approved" : "pending";
+        const inv: Invoice = {
+          id: uid("inv"), code: `INV-1448-${nextNo}`,
+          vendor: input.vendor, purpose: input.purpose, scope: input.scope,
+          amount: input.amount, vat: input.vat, date: input.date,
+          status, extractedByAI: !!input.ocr,
+          lineItems: input.ocr?.lineItems,
+          conditions,
+          vendorTaxNumber: input.ocr?.vendorTaxNumber,
+          invoiceNumber: input.ocr?.invoiceNumber,
+          submittedAt: new Date().toISOString(),
+          hasImage: !!input.imageDataUrl,
+        };
+        return { invoices: [inv, ...s.invoices] };
+      });
       persist(() => dbAddInvoice(input));
     },
     approveInvoice(id) {
-      update(s => ({ invoices: s.invoices.map(i => i.id === id ? { ...i, status: "paid" } : i) }));
+      update(s => ({ invoices: s.invoices.map(i => i.id === id ? { ...i, status: "approved" } : i) }));
       persist(() => dbApproveInvoice(id));
+    },
+    rejectInvoice(id) {
+      update(s => {
+        const inv = s.invoices.find(i => i.id === id);
+        return {
+          invoices: s.invoices.filter(i => i.id !== id),
+          trashInvoices: inv ? [inv, ...s.trashInvoices] : s.trashInvoices,
+        };
+      });
+      persist(() => dbRejectInvoice(id));
     },
     deleteInvoice(id) {
       update(s => {
@@ -500,6 +553,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return { pageMarquees: nextMap };
       });
       persist(() => dbSetPageMarquees(nextMap));
+    },
+    setAssociationIdentity(name, taxNumber) {
+      update({ associationName: name, associationTaxNumber: taxNumber });
+      persist(() => dbSetAssociationIdentity(name, taxNumber));
+    },
+    setConditionsPolicy(policy) {
+      update({ conditionsPolicy: policy });
+      persist(() => dbSetConditionsPolicy(policy));
     },
 
     resetAll() {

@@ -140,6 +140,14 @@ export const rowToInvoice = (r: any): Invoice => ({
   date: r.date ?? "",
   status: r.status,
   extractedByAI: r.extracted_by_ai ?? false,
+  lineItems: r.line_items ?? undefined,
+  conditions: r.conditions ?? undefined,
+  vendorTaxNumber: r.vendor_tax_number ?? undefined,
+  invoiceNumber: r.invoice_number ?? undefined,
+  uploadedBy: r.uploaded_by ?? undefined,
+  submittedAt: r.submitted_at ?? undefined,
+  //  اللقطة الجماعيّة تستبعد image_data_url؛ نحسب علماً بوجود صورة فقط.
+  hasImage: !!(r.has_image ?? (r.image_data_url != null && r.image_data_url !== "")),
 });
 
 export const invoiceToRow = (i: Partial<Invoice>) => ({
@@ -153,6 +161,12 @@ export const invoiceToRow = (i: Partial<Invoice>) => ({
   ...(i.date !== undefined && { date: i.date }),
   ...(i.status !== undefined && { status: i.status }),
   ...(i.extractedByAI !== undefined && { extracted_by_ai: i.extractedByAI }),
+  ...(i.lineItems !== undefined && { line_items: i.lineItems }),
+  ...(i.conditions !== undefined && { conditions: i.conditions }),
+  ...(i.vendorTaxNumber !== undefined && { vendor_tax_number: i.vendorTaxNumber }),
+  ...(i.invoiceNumber !== undefined && { invoice_number: i.invoiceNumber }),
+  ...(i.uploadedBy !== undefined && { uploaded_by: i.uploadedBy }),
+  ...(i.submittedAt !== undefined && { submitted_at: i.submittedAt }),
 });
 
 export const rowToRegField = (r: any): RegField => ({

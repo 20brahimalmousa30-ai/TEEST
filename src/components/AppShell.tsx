@@ -36,6 +36,7 @@ const fullNav: NavGroup[] = [
     items: [
       { href: "/settings/site",         label: "إعدادات الموقع", icon: <IconImage /> },
       { href: "/settings/registration", label: "نموذج التسجيل", icon: <IconSettings /> },
+      { href: "/settings/invoices",     label: "إعدادات الفواتير", icon: <IconInvoice /> },
       { href: "/settings/motivations",  label: "الجُمل التحفيزيّة", icon: <IconSettings /> },
       { href: "/settings/account",      label: "إعدادات الحساب", icon: <IconUser /> },
     ],

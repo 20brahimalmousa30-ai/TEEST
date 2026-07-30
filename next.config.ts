@@ -8,6 +8,9 @@ const BUILD_ID =
 
 const nextConfig: NextConfig = {
   env: { NEXT_PUBLIC_BUILD_ID: BUILD_ID },
+  // يسمح بالوصول لخادم التطوير من أجهزة الشبكة المحلّيّة (الجوال) دون تحذيرات
+  //  cross-origin. لا أثر له في الإنتاج.
+  allowedDevOrigins: ["10.91.138.25"],
 };
 
 export default nextConfig;

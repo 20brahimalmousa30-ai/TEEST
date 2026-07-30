@@ -15,6 +15,9 @@ import { motivations as DEFAULT_MOTIVATIONS, tickerPhrases as DEFAULT_TICKER } f
 import type { PageMarqueeMap } from "@/lib/pageMarquees";
 import { getSession } from "@/lib/auth/session-core";
 import type { DbSession } from "./types";
+import { analyzeInvoice, type InvoiceMediaType } from "@/lib/ai/vision";
+import { evaluateConditions, passesPolicy, DEFAULT_CONDITIONS_POLICY } from "@/lib/ai/conditions";
+import type { OcrExtraction, ConditionsPolicy } from "@/lib/mock/types";
 
 /* ═══════════════════════ حُرّاسُ الصلاحية (خادم) ═══════════════════════
  * كلُّ دالّةٍ مُصدَّرة هنا هي نقطةُ RPC عامّة قابلةٌ للاستدعاء المباشر — لا يكفي
@@ -31,10 +34,17 @@ const STUDENT_LEAN_COLUMNS =
   "paid_amount,total_amount,points,emergency_contact,emergency_phone,attendance," +
   "approval_status,registered_at,access_code,receipt_status,receipt_amount,receipt_submitted_at,reg_answers";
 
+/** كلُّ أعمدة الفواتير **ما عدا** image_data_url (base64 ثقيل يُجلَب عند الطلب
+ *  عبر /api/invoices/[id]/image). has_image علمٌ خفيفٌ بديل. */
+const INVOICE_LEAN_COLUMNS =
+  "id,code,vendor,purpose,scope,amount,vat,date,status,extracted_by_ai,has_image," +
+  "line_items,conditions,vendor_tax_number,invoice_number,uploaded_by,submitted_at,in_trash,created_at";
+
 /** كلُّ أعمدة الإعدادات **ما عدا** logo_url (base64 ثقيل يُجلَب عند الطلب). */
 const APP_SETTINGS_LEAN_COLUMNS =
   "id,reg_open,logo_display_mode,motivations,ticker_phrases,trip_message," +
-  "post_register_note,brand_accent,brand_accent_warm,page_marquees,logo_version";
+  "post_register_note,brand_accent,brand_accent_warm,page_marquees,logo_version," +
+  "association_name,association_tax_number,conditions_policy";
 
 async function requireSession(): Promise<DbSession> {
   const s = await getSession();
@@ -154,6 +164,7 @@ export async function loadAllData(): Promise<State> {
     trip_message?: string; post_register_note?: string;
     logo_version?: number; brand_accent?: string; brand_accent_warm?: string;
     page_marquees?: unknown;
+    association_name?: string; association_tax_number?: string; conditions_policy?: unknown;
   } | null;
 
   const publicState = {
@@ -172,6 +183,9 @@ export async function loadAllData(): Promise<State> {
       ? { accent: s.brand_accent, accentWarm: s.brand_accent_warm }
       : null,
     pageMarquees:   (s?.page_marquees ?? {}) as PageMarqueeMap,
+    associationName:      s?.association_name ?? "",
+    associationTaxNumber: s?.association_tax_number ?? "",
+    conditionsPolicy:     (s?.conditions_policy as ConditionsPolicy | null) ?? DEFAULT_CONDITIONS_POLICY,
   };
 
   const base: State = {
@@ -211,7 +225,7 @@ export async function loadAllData(): Promise<State> {
       db.from("students").select(STUDENT_LEAN_COLUMNS).order("points", { ascending: false }),
       db.from("supervisors").select("*"),
       db.from("committees").select("*"),
-      db.from("invoices").select("*").order("created_at", { ascending: false }),
+      db.from("invoices").select(INVOICE_LEAN_COLUMNS).order("created_at", { ascending: false }),
       db.from("attendance").select("*"),
       db.from("supervisor_assignments").select("*"),
     ]);
@@ -236,8 +250,10 @@ export async function loadAllData(): Promise<State> {
     }
   }
 
-  const allInvoices = (invoices.data ?? []).map(rowToInvoice);
-  const trashIds = new Set((invoices.data ?? []).filter(r => r.in_trash).map(r => r.id));
+  // تحديدُ الأعمدة بسلسلةٍ متغيّرة يُفقِد Supabase استنتاجَ نوع الصفّ، فنُصرّح به يدويّاً.
+  const invoiceRows = (invoices.data ?? []) as unknown as Array<Record<string, unknown> & { id: string; in_trash?: boolean }>;
+  const allInvoices = invoiceRows.map(rowToInvoice);
+  const trashIds = new Set(invoiceRows.filter(r => r.in_trash).map(r => r.id));
 
   // رقم الهوية الحقيقيّ (national_id) حسّاسٌ — يُكشف للإدارة فقط (الأمير/نائبه).
   // نُجرّده من لقطة المشرفين هنا (لا في الواجهة فقط) حتّى لا يصل لأجهزتهم أصلاً.
@@ -578,16 +594,98 @@ export async function dbDeleteCommittee(id: string) {
 
 /* ─────────────────────────── الفواتير ─────────────────────────── */
 
-export async function dbAddInvoice(input: Omit<Invoice, "id" | "code">) {
-  await requirePermission("invoices");
-  const nextNo = String(1000 + Math.floor(Math.random() * 8999));
-  await getSupabase().from("invoices").insert(
-    { ...invoiceToRow(input), id: uid("inv"), code: `INV-1448-${nextNo}`, in_trash: false },
-  );
+// حدودٌ أمنيّة خادميّة (لا الواجهة فقط): نوعٌ مسموح + حدٌّ أقصى للحجم. الواجهة قد
+// تُحايَل عليها باستدعاء الإجراء مباشرةً بصورةٍ ضخمة أو نوعٍ غير مدعوم.
+const ALLOWED_INVOICE_MEDIA_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
+const MAX_INVOICE_BASE64_LENGTH = 7 * 1024 * 1024; // ≈ ٥ ميغابايت بعد فكّ الترميز
+
+/** يتحقّق من صيغة data URL ونوعه وحجمه؛ يعيد {base64, mediaType, dataUrl} أو يرمي. */
+function validateInvoiceImage(dataUrl: string): {
+  base64: string; mediaType: InvoiceMediaType; dataUrl: string;
+} {
+  const m = /^data:([^;,]+);base64,([\s\S]*)$/u.exec(dataUrl);
+  if (!m) throw new Error("صيغة صورة الفاتورة غير صالحة.");
+  const mediaType = m[1];
+  if (!(ALLOWED_INVOICE_MEDIA_TYPES as readonly string[]).includes(mediaType)) {
+    throw new Error("نوع صورة الفاتورة غير مدعوم — المسموح: JPG أو PNG أو WebP أو GIF.");
+  }
+  if (m[2].length > MAX_INVOICE_BASE64_LENGTH) {
+    throw new Error("حجم صورة الفاتورة كبيرٌ جداً — الحدّ الأقصى نحو ٥ ميغابايت.");
+  }
+  return { base64: m[2], mediaType: mediaType as InvoiceMediaType, dataUrl };
 }
-export async function dbApproveInvoice(id: string) {
+
+/** يحلّل صورة فاتورة (base64 data URL) بالذكاء الاصطناعي ويعيد الاستخلاص للمراجعة.
+ *  للمشرف صاحب صلاحيّة «invoices» أو الإدارة فقط. */
+export async function dbAnalyzeInvoice(imageDataUrl: string): Promise<OcrExtraction> {
   await requirePermission("invoices");
-  await getSupabase().from("invoices").update({ status: "paid" }).eq("id", id);
+  const { base64, mediaType } = validateInvoiceImage(imageDataUrl);
+  return analyzeInvoice(base64, mediaType);
+}
+
+type AddInvoiceInput = {
+  vendor: string;
+  purpose: string;
+  scope: Invoice["scope"];
+  amount: number;
+  vat: number;
+  date: string;
+  imageDataUrl?: string;   // صورة الفاتورة (base64) — تُخزَّن وتُخدَم كسولاً
+  ocr?: OcrExtraction;     // الاستخلاص (بعد تصحيح المشرف) — لتقييم الشروط وتثبيت البنود
+};
+
+export async function dbAddInvoice(input: AddInvoiceInput) {
+  const session = await requirePermission("invoices");
+  const db = getSupabase();
+
+  // هويّة الجمعية المسجّلة وسياسة الشروط — من الإعدادات خادميّاً (لا يُوثَق بقيمة العميل).
+  const { data: st } = await db.from("app_settings")
+    .select("association_name,association_tax_number,conditions_policy").eq("id", 1).single();
+  const policy = (st?.conditions_policy as ConditionsPolicy | null) ?? DEFAULT_CONDITIONS_POLICY;
+
+  const ocr = input.ocr ?? null;
+  //  إعادة تقييمٍ خادميّةٌ للشروط السبعة (تُثبَّت مع الفاتورة).
+  const conditions = evaluateConditions(ocr, st?.association_name ?? "", st?.association_tax_number ?? "");
+  //  ملفٌّ حُلِّل واستوفى الشروط الإلزاميّة → يُعتمَد تلقائياً. اختلّ شرطٌ (أو إدخالٌ
+  //  يدويٌّ بلا تحليل) → يُرفَع «معلّقاً» لمراجعة الأمير/نائبه.
+  const status: Invoice["status"] = ocr && passesPolicy(conditions, policy) ? "approved" : "pending";
+
+  const img = input.imageDataUrl ? validateInvoiceImage(input.imageDataUrl).dataUrl : null;
+  const nextNo = String(1000 + Math.floor(Math.random() * 8999));
+  await db.from("invoices").insert({
+    ...invoiceToRow({
+      vendor: input.vendor,
+      purpose: input.purpose,
+      scope: input.scope,
+      amount: input.amount,
+      vat: input.vat,
+      date: input.date,
+      extractedByAI: !!ocr,
+      lineItems: ocr?.lineItems,
+      conditions,
+      vendorTaxNumber: ocr?.vendorTaxNumber,
+      invoiceNumber: ocr?.invoiceNumber,
+      uploadedBy: session.supervisorId ?? undefined,
+      submittedAt: new Date().toISOString(),
+    }),
+    id: uid("inv"),
+    code: `INV-1448-${nextNo}`,
+    in_trash: false,
+    status,
+    image_data_url: img,
+    has_image: !!img,
+  });
+}
+
+//  الاعتماد النهائيّ للأمير/نائبه فقط (لا اعتمادٌ آليٌّ صامتٌ بناءً على الذكاء وحده).
+export async function dbApproveInvoice(id: string) {
+  await requireAdmin();
+  await getSupabase().from("invoices").update({ status: "approved" }).eq("id", id);
+}
+//  رفض الأمير: يُنقَل لسلة المحذوفات.
+export async function dbRejectInvoice(id: string) {
+  await requireAdmin();
+  await getSupabase().from("invoices").update({ in_trash: true }).eq("id", id);
 }
 export async function dbDeleteInvoice(id: string) {
   await requirePermission("invoices");
@@ -679,6 +777,21 @@ export async function dbSetTripMessage(text: string) {
 export async function dbSetPostRegisterNote(text: string) {
   await requireAdmin();
   const { error } = await getSupabase().from("app_settings").update({ post_register_note: text }).eq("id", 1);
+  if (error) throw error;
+}
+/** هويّة الجمعية الرسميّة — لمطابقة شرطَي «اسم الجمعية» و«الرقم الضريبي للجمعية». */
+export async function dbSetAssociationIdentity(name: string, taxNumber: string) {
+  await requireAdmin();
+  const { error } = await getSupabase().from("app_settings")
+    .update({ association_name: name.trim() || null, association_tax_number: taxNumber.trim() || null })
+    .eq("id", 1);
+  if (error) throw error;
+}
+/** سياسة الشروط الإلزاميّة لاعتماد الفواتير تلقائياً. */
+export async function dbSetConditionsPolicy(policy: ConditionsPolicy) {
+  await requireAdmin();
+  const { error } = await getSupabase().from("app_settings")
+    .update({ conditions_policy: policy }).eq("id", 1);
   if (error) throw error;
 }
 /** البند ٦: يحفظ شعار الموقع المخصّص (Data URL). فارغٌ = استعادة الشعار الافتراضي.

@@ -100,8 +100,16 @@ create table if not exists invoices (
   amount         integer not null default 0,
   vat            integer not null default 15,
   date           text not null default '',
-  status         text not null default 'pending' check (status in ('paid','pending','overdue')),
+  status         text not null default 'pending' check (status in ('paid','pending','overdue','approved')),
   extracted_by_ai boolean not null default false,
+  image_data_url text,                       -- صورة الفاتورة (base64) — تُخدَم كسولاً
+  has_image      boolean not null default false, -- علمٌ خفيف (اللقطة تستبعد الصورة نفسها)
+  line_items     jsonb,                       -- بنود الفاتورة المُستخرَجة
+  conditions     jsonb,                       -- تقييم الشروط السبعة (مُثبَّت خادميّاً)
+  vendor_tax_number text,                     -- الرقم الضريبي للمورّد
+  invoice_number text,                        -- رقم الفاتورة لدى المورّد (المُستخرَج)
+  uploaded_by    text,                        -- مُعرِّف المشرف الرافع
+  submitted_at   timestamptz,                 -- وقت الإرسال للاعتماد
   in_trash       boolean not null default false,
   created_at     timestamptz not null default now()
 );
@@ -129,7 +137,10 @@ create table if not exists attendance (
 create table if not exists app_settings (
   id                integer primary key default 1 check (id = 1),
   reg_open          boolean not null default true,
-  logo_display_mode text not null default 'VISIBLE' check (logo_display_mode in ('VISIBLE','BLURRED','HIDDEN'))
+  logo_display_mode text not null default 'VISIBLE' check (logo_display_mode in ('VISIBLE','BLURRED','HIDDEN')),
+  association_name       text,   -- اسم الجمعية الرسمي (لمطابقة شرط اسم الجمعية)
+  association_tax_number text,   -- الرقم الضريبي للجمعية (لمطابقة شرط الرقم الضريبي)
+  conditions_policy      jsonb   -- سياسة الشروط الإلزاميّة (الافتراض: السبعة كلها)
 );
 
 insert into app_settings (id) values (1) on conflict (id) do nothing;
@@ -395,3 +406,39 @@ alter table students add column if not exists reg_answers jsonb;
 --  يُعتمَد هذا العمود، ومن لا رقم حقيقيّ له يُعرَض «غير مسجَّل».
 --  ⚠️ شغّل هذا السطر في Supabase قبل نشر الشيفرة التي تعتمد عليه.
 alter table supervisors add column if not exists national_id text;
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  تحليل فواتير المشرفين بالذكاء الاصطناعي + الاعتماد المشروط بالشروط السبعة
+--  ⚠️ شغّل هذه الأسطر في Supabase قبل نشر الشيفرة التي تعتمد عليها.
+-- ═══════════════════════════════════════════════════════════════════════
+-- صورة الفاتورة المرفوعة (base64 data URL) — تُستبعَد من لقطة loadAllData
+--  وتُخدَم كسولاً عبر /api/invoices/[id]/image (كنمط صور الطلاب).
+alter table invoices add column if not exists image_data_url  text;
+-- علمٌ خفيفٌ بوجود صورة (اللقطة الجماعيّة تستبعد الصورة نفسها).
+alter table invoices add column if not exists has_image       boolean not null default false;
+-- بنود الفاتورة المُستخرَجة: [{description, quantity, unitPrice, total}]
+alter table invoices add column if not exists line_items      jsonb;
+-- نتيجة تقييم الشروط السبعة (مُثبَّتة خادميّاً عند الرفع): { taxInvoice, ... }
+alter table invoices add column if not exists conditions      jsonb;
+-- الرقم الضريبي للمورّد المُستخرَج (لشرط رقم المنشأة).
+alter table invoices add column if not exists vendor_tax_number text;
+-- رقم الفاتورة لدى المورّد (المُستخرَج).
+alter table invoices add column if not exists invoice_number  text;
+-- مُعرِّف المشرف الذي رفع الفاتورة (لعرض «مَن رفع» للأمير).
+alter table invoices add column if not exists uploaded_by     text;
+-- وقت الإرسال للاعتماد.
+alter table invoices add column if not exists submitted_at    timestamptz;
+
+-- حالة الاعتماد الجديدة «approved» (المشرف يعتمدها تلقائياً عند استيفاء الشروط،
+--  أو تبقى pending لمراجعة الأمير). نوسّع قيد الحالة ليشملها.
+do $$ begin
+  alter table invoices drop constraint if exists invoices_status_check;
+  alter table invoices add constraint invoices_status_check
+    check (status in ('paid','pending','overdue','approved'));
+exception when others then null; end $$;
+
+-- هويّة الجمعية الرسميّة (لشرطَي «اسم الجمعية» و«الرقم الضريبي للجمعية») +
+--  سياسة الشروط الإلزاميّة. الافتراض: كل الشروط السبعة إلزاميّة.
+alter table app_settings add column if not exists association_name     text;
+alter table app_settings add column if not exists association_tax_number text;
+alter table app_settings add column if not exists conditions_policy    jsonb;

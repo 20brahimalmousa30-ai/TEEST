@@ -74,6 +74,42 @@ export type Student = {
   regAnswers?: Record<string, string>; // إجابات حقول التسجيل المخصّصة (مفتاح الحقل → الإجابة)
 };
 
+/** بندٌ واحدٌ في الفاتورة (وصف/كميّة/سعر/إجمالي). */
+export interface InvoiceLineItem {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
+/** الاستخلاص الخام من صورة الفاتورة (اقتراحٌ قابلٌ للتصحيح — لا يُعتمَد آلياً). */
+export interface OcrExtraction {
+  vendorName: string;
+  vendorTaxNumber: string;
+  associationName: string;
+  associationTaxNumber: string;
+  invoiceNumber: string;
+  issueDate: string;            // YYYY-MM-DD
+  lineItems: InvoiceLineItem[];
+  vatAmount: number;
+  total: number;
+  isTaxInvoice: boolean;
+}
+
+/** تقييم الشروط السبعة لصحّة الفاتورة الضريبيّة. */
+export interface SevenConditions {
+  taxInvoice: boolean;           // ١) فاتورة ضريبيّة
+  associationName: boolean;      // ٢) اسم الجمعية الصحيح
+  associationTaxNumber: boolean; // ٣) الرقم الضريبي للجمعية
+  vendorTaxNumber: boolean;      // ٤) الرقم الضريبي للمنشأة (المورّد)
+  issueDate: boolean;            // ٥) تاريخ إصدار الفاتورة
+  serviceDetails: boolean;       // ٦) تفاصيل الخدمة أو المنتج
+  quantityAndTotal: boolean;     // ٧) الكميّة والسعر الإجمالي
+}
+
+/** سياسة الشروط: true = هذا الشرط «إلزاميّ» للجمعية، false = «غير مُفعّل» (يُتجاهَل). */
+export type ConditionsPolicy = SevenConditions;
+
 export type Invoice = {
   id: string;
   code: string;
@@ -83,6 +119,17 @@ export type Invoice = {
   amount: number;
   vat: number;
   date: string;
-  status: "paid" | "pending" | "overdue";
+  //  «معتمدة» (approved): اجتازت الشروط الإلزاميّة فاعتُمِدت تلقائياً.
+  //  «معلّقة» (pending): اختلّ شرطٌ فرُفِعت لمراجعة الأمير.
+  status: "paid" | "pending" | "overdue" | "approved";
   extractedByAI: boolean;
+  lineItems?: InvoiceLineItem[];       // بنود الفاتورة المُستخرَجة
+  conditions?: SevenConditions;        // تقييم الشروط (مُثبَّت خادميّاً)
+  vendorTaxNumber?: string;            // الرقم الضريبي للمورّد
+  associationName?: string;            // اسم الجمعية المُستخرَج (للمراجعة)
+  associationTaxNumber?: string;       // الرقم الضريبي للجمعية المُستخرَج
+  invoiceNumber?: string;              // رقم الفاتورة المُستخرَج
+  uploadedBy?: string;                 // مُعرِّف المشرف الرافع
+  submittedAt?: string;                // ISO date للإرسال
+  hasImage?: boolean;                  // صورةٌ مرفوعة تُخدَم عبر مسارٍ مستقلّ
 };
