@@ -9,7 +9,7 @@ import {
   rowToSupervisor, supervisorToRow,
   rowToStudent, studentToRow,
   rowToInvoice, invoiceToRow,
-  rowToRegField,
+  rowToRegField, rowToStudentTask,
 } from "./mappers";
 import { motivations as DEFAULT_MOTIVATIONS, tickerPhrases as DEFAULT_TICKER } from "@/lib/motivations";
 import type { PageMarqueeMap } from "@/lib/pageMarquees";
@@ -45,7 +45,7 @@ const INVOICE_LEAN_COLUMNS =
 const APP_SETTINGS_LEAN_COLUMNS =
   "id,reg_open,logo_display_mode,motivations,ticker_phrases,trip_message," +
   "post_register_note,brand_accent,brand_accent_warm,page_marquees,logo_version," +
-  "association_name,association_tax_number,conditions_policy";
+  "association_name,association_tax_number,conditions_policy,default_fee";
 
 async function requireSession(): Promise<DbSession> {
   const s = await getSession();
@@ -169,6 +169,7 @@ export async function loadAllData(): Promise<State> {
     logo_version?: number; brand_accent?: string; brand_accent_warm?: string;
     page_marquees?: unknown;
     association_name?: string; association_tax_number?: string; conditions_policy?: unknown;
+    default_fee?: number;
   } | null;
 
   const publicState = {
@@ -190,10 +191,12 @@ export async function loadAllData(): Promise<State> {
     associationName:      s?.association_name ?? "",
     associationTaxNumber: s?.association_tax_number ?? "",
     conditionsPolicy:     (s?.conditions_policy as ConditionsPolicy | null) ?? DEFAULT_CONDITIONS_POLICY,
+    defaultFee:           s?.default_fee ?? 2500,
   };
 
   const base: State = {
     teams: [], students: [], supervisors: [], committees: [], committeeTasks: [],
+    studentTasks: [],
     invoices: [], trashInvoices: [], attendance: {},
     ...publicState,
   };
@@ -204,14 +207,19 @@ export async function loadAllData(): Promise<State> {
   // المستفيد: سجلُّه وفريقُه فقط.
   if (session.role === "BENEFICIARY") {
     if (!session.studentId) return base;
-    const [meRow, teams] = await Promise.all([
+    const [meRow, teams, myTasks] = await Promise.all([
       db.from("students").select("*").eq("id", session.studentId).single(),
       db.from("teams").select("*").order("points", { ascending: false }),
+      // البند ١: يرى الطالب مهامّه المرئيّة فقط (visible=true).
+      db.from("student_tasks").select("*")
+        .eq("student_id", session.studentId).eq("visible", true)
+        .order("created_at", { ascending: false }),
     ]);
     return {
       ...base,
       teams: (teams.data ?? []).map(rowToTeam),
       students: meRow.data ? [rowToStudent(meRow.data)] : [],
+      studentTasks: (myTasks.data ?? []).map(rowToStudentTask),
     };
   }
 
@@ -223,7 +231,7 @@ export async function loadAllData(): Promise<State> {
   // في كلّ تحميلٍ للصفحة (صورةٌ واحدة ≈ ٣٠٠ ك.ب) وتتضخّم خطّياً مع عدد
   // المستفيدين، فصارت أكبر سببٍ لبطء الموقع. تُجلَب الصور الآن عند الطلب
   // فقط عبر مسار /api/students/[id]/image عند عرض صورةٍ بعينها.
-  const [teams, students, supervisors, committees, invoices, attRows, asgRows, cTasks] =
+  const [teams, students, supervisors, committees, invoices, attRows, asgRows, cTasks, sTasks] =
     await Promise.all([
       db.from("teams").select("*").order("points", { ascending: false }),
       db.from("students").select(STUDENT_LEAN_COLUMNS).order("points", { ascending: false }),
@@ -233,6 +241,7 @@ export async function loadAllData(): Promise<State> {
       db.from("attendance").select("*"),
       db.from("supervisor_assignments").select("*"),
       db.from("committee_tasks").select("*").order("created_at", { ascending: false }),
+      db.from("student_tasks").select("*").order("created_at", { ascending: false }),
     ]);
 
   const attendance: Record<string, boolean[]> = {};
@@ -290,10 +299,72 @@ export async function loadAllData(): Promise<State> {
       id: t.id, committeeId: t.committee_id, title: t.title,
       assigneeId: t.assignee_id ?? undefined, done: !!t.done, createdAt: t.created_at,
     })),
+    studentTasks:   (sTasks.data ?? []).map(rowToStudentTask),
     invoices:       allInvoices.filter(i => !trashIds.has(i.id)),
     trashInvoices:  allInvoices.filter(i => trashIds.has(i.id)),
     attendance,
   };
+}
+
+/* ─────────── دليلٌ تعريفيٌّ عامّ (صفحات «اللجان» و«المشرفون») ───────────
+ *  صفحاتٌ عامّة لا تتطلّب دخولاً، لذا نكشف حقولاً غيرَ حسّاسة فقط:
+ *  للجان: الاسم/الوصف/اللون/الصورة/المشرفون/عدد الطلاب (المشتقّ من فرق مشرفيها).
+ *  للمشرفين: الاسم/التخصُّص/الصورة/اللجان — دون هاتفٍ أو بريدٍ أو هويّة أو رمز دخول. */
+export type PublicSupervisor = {
+  id: string; name: string; specialty?: string; photoDataUrl?: string;
+  committeeIds: string[]; teamIds: string[];
+};
+export type PublicCommittee = {
+  id: string; name: string; description: string; color: string;
+  imageDataUrl?: string; supervisorIds: string[]; studentCount: number;
+};
+export type PublicDirectory = { committees: PublicCommittee[]; supervisors: PublicSupervisor[] };
+
+export async function loadPublicDirectory(): Promise<PublicDirectory> {
+  const db = getSupabase();
+  const [committees, supervisors, teams, asgRows] = await Promise.all([
+    db.from("committees").select("id,name,description,color,image_data_url"),
+    db.from("supervisors").select("id,name,specialty,photo_data_url"),
+    db.from("teams").select("id,supervisor_id,student_count"),
+    db.from("supervisor_assignments").select("*"),
+  ]);
+
+  // اشتقاق علاقات المشرفين من جدول الربط (المصدر الوحيد للحقيقة).
+  const supTeams: Record<string, string[]> = {};
+  const supComms: Record<string, string[]> = {};
+  const commSups: Record<string, string[]> = {};
+  for (const a of asgRows.data ?? []) {
+    if (a.target_kind === "team") (supTeams[a.supervisor_id] ??= []).push(a.target_id);
+    else if (a.target_kind === "committee") {
+      (supComms[a.supervisor_id] ??= []).push(a.target_id);
+      (commSups[a.target_id] ??= []).push(a.supervisor_id);
+    }
+  }
+
+  // عددُ طلاب الفريق (لاشتقاق «عدد طلاب اللجنة» عبر فرق مشرفيها).
+  const teamCount: Record<string, number> = {};
+  for (const t of teams.data ?? []) teamCount[t.id] = t.student_count ?? 0;
+
+  const pubCommittees: PublicCommittee[] = (committees.data ?? []).map(c => {
+    const sups = commSups[c.id] ?? [];
+    // فرقُ مشرفي اللجنة (دون تكرار) ← مجموع طلابها = «عدد طلاب اللجنة».
+    const teamIds = new Set<string>();
+    for (const sid of sups) for (const tid of supTeams[sid] ?? []) teamIds.add(tid);
+    let studentCount = 0;
+    for (const tid of teamIds) studentCount += teamCount[tid] ?? 0;
+    return {
+      id: c.id, name: c.name, description: c.description ?? "", color: c.color,
+      imageDataUrl: c.image_data_url ?? undefined, supervisorIds: sups, studentCount,
+    };
+  });
+
+  const pubSupervisors: PublicSupervisor[] = (supervisors.data ?? []).map(s => ({
+    id: s.id, name: s.name, specialty: s.specialty ?? undefined,
+    photoDataUrl: s.photo_data_url ?? undefined,
+    committeeIds: supComms[s.id] ?? [], teamIds: supTeams[s.id] ?? [],
+  }));
+
+  return { committees: pubCommittees, supervisors: pubSupervisors };
 }
 
 /* ─────────── جدول الربط: مُساعِدات المشرفين↔الفرق/اللجان ─────────── */
@@ -531,8 +602,9 @@ async function bumpTeamCount(teamId: string, delta: number) {
 
 /* ─────────────────────────── المشرفون ─────────────────────────── */
 
-export async function dbAddSupervisor(name: string, phoneRaw: string, email: string, teamIds: string[], committeeIds: string[], permissions: string[], code: string, nationalId = "") {
+export async function dbAddSupervisor(name: string, phoneRaw: string, email: string, teamIds: string[], committeeIds: string[], permissions: string[], code: string, nationalId = "", specialty = "", photoDataUrl?: string) {
   await requireAdmin();
+  assertValidImage(photoDataUrl);
   const phone = normalizePhone(phoneRaw);
   const id = uid("s");
   const nid = nationalId.trim();
@@ -541,6 +613,8 @@ export async function dbAddSupervisor(name: string, phoneRaw: string, email: str
       id, name, phone, email, permissions, accessCode: code,
       nationalId: nid || undefined,
       nationalIdMasked: nid ? "••••••" + nid.slice(-4) : "",
+      specialty: specialty.trim() || undefined,
+      photoDataUrl: photoDataUrl || undefined,
     }),
   );
   await setSupervisorTargets(id, "team", teamIds);
@@ -658,6 +732,48 @@ export async function dbDeleteCommitteeTask(id: string) {
   if (!cid) return;
   await requireCommitteeAccess(cid);
   await getSupabase().from("committee_tasks").delete().eq("id", id);
+}
+
+/* ─────────── المهامّ التحفيزيّة/الذاتيّة للطلاب (البند ١ و٣) ───────────
+ *  يرصدها أيُّ عضوِ طاقم (أمير/نائب/مشرف) لطالبٍ بعينه؛ ولكلّ مهمّةٍ نقاطٌ محفِّزة.
+ *  يراها الطالب في «مهامي» — المرئيّة منها فقط (visible=true). الحُرّاس خادميّون. */
+export async function dbAddStudentTask(
+  studentId: string, title: string, points: number, dueDate?: string
+) {
+  const s = await requireStaff();
+  const t = title.trim();
+  if (!studentId || !t) return;
+  await getSupabase().from("student_tasks").insert({
+    id: uid("stask"), student_id: studentId, title: t,
+    points: Math.max(0, Math.floor(points || 0)),
+    assigned_by: s.supervisorId ?? s.phone ?? null,
+    visible: true, due_date: dueDate || null, done: false,
+  });
+}
+export async function dbToggleStudentTask(id: string, done: boolean) {
+  await requireStaff();
+  await getSupabase().from("student_tasks").update({ done }).eq("id", id);
+}
+export async function dbSetStudentTaskVisible(id: string, visible: boolean) {
+  await requireStaff();
+  await getSupabase().from("student_tasks").update({ visible }).eq("id", id);
+}
+export async function dbDeleteStudentTask(id: string) {
+  await requireStaff();
+  await getSupabase().from("student_tasks").delete().eq("id", id);
+}
+
+/* ─────────── قيمة الرسوم الافتراضيّة (البند ٢) ───────────
+ *  يعدّلها الأمير/نائبه فقط. تُطبَّق على جميع الطلاب، ويُحفَظ تغييرٌ في fee_history. */
+export async function dbSetDefaultFee(amount: number) {
+  const s = await requireAdmin();
+  const fee = Math.max(0, Math.floor(amount || 0));
+  const db = getSupabase();
+  await db.from("app_settings").update({ default_fee: fee }).eq("id", 1);
+  await db.from("students").update({ total_amount: fee }).neq("id", "");
+  await db.from("fee_history").insert({
+    id: uid("fee"), amount: fee, changed_by: s.supervisorId ?? s.phone ?? null,
+  });
 }
 
 /* ─────────────────────────── الفواتير ─────────────────────────── */

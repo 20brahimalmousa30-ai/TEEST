@@ -12,8 +12,9 @@ import type { Supervisor } from "@/lib/mock/types";
 import { SUPERVISOR_PERMISSIONS } from "@/lib/mock/types";
 import { parseCSV } from "@/lib/spreadsheet";
 import { exportXlsx } from "@/lib/xlsx";
+import { fileToDataUrl } from "@/lib/image";
 
-const empty = { name: "", phone: "", email: "", nationalId: "", teamIds: [] as string[], committeeIds: [] as string[], permissions: [] as string[] };
+const empty = { name: "", phone: "", email: "", nationalId: "", specialty: "", photoDataUrl: "", teamIds: [] as string[], committeeIds: [] as string[], permissions: [] as string[] };
 
 export default function SupervisorsPage() {
   useEffect(() => { document.title = "المشرفون — معالي محافظة بلّسمر"; }, []);
@@ -25,6 +26,8 @@ export default function SupervisorsPage() {
   const [toDelete, setToDelete] = useState<Supervisor | null>(null);
   const [form, setForm] = useState({ ...empty });
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const photoRef = useRef<HTMLInputElement | null>(null);
+  const [photoErr, setPhotoErr] = useState("");
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   async function exportExcel() {
@@ -82,11 +85,23 @@ export default function SupervisorsPage() {
 
   function openNew() {
     setForm({ ...empty });
+    setPhotoErr("");
     setModalId("new");
   }
   function openEdit(s: Supervisor) {
-    setForm({ name: s.name, phone: s.phone, email: s.email, nationalId: s.nationalId ?? "", teamIds: [...s.teamIds], committeeIds: [...s.committeeIds], permissions: [...(s.permissions ?? [])] });
+    setForm({ name: s.name, phone: s.phone, email: s.email, nationalId: s.nationalId ?? "", specialty: s.specialty ?? "", photoDataUrl: s.photoDataUrl ?? "", teamIds: [...s.teamIds], committeeIds: [...s.committeeIds], permissions: [...(s.permissions ?? [])] });
+    setPhotoErr("");
     setModalId(s.id);
+  }
+  async function onPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setPhotoErr("الملف يجب أن يكون صورة."); return; }
+    if (file.size > 3 * 1024 * 1024) { setPhotoErr("الحدّ الأقصى ٣ ميغابايت."); return; }
+    setPhotoErr("");
+    try { const dataUrl = await fileToDataUrl(file); setForm(f => ({ ...f, photoDataUrl: dataUrl })); }
+    catch { setPhotoErr("تعذّرت قراءة الصورة."); }
   }
   function toggleFrom(list: "teamIds" | "committeeIds" | "permissions", id: string) {
     setForm(f => f[list].includes(id)
@@ -98,10 +113,11 @@ export default function SupervisorsPage() {
     if (!form.name.trim()) return;
     // رقم الهوية يُدخله/يُعدّله الأمير فقط؛ لغيره لا نُرسل الحقل إطلاقاً.
     if (modalId === "new") {
-      addSupervisor(form.name.trim(), form.phone.trim(), form.email.trim(), form.teamIds, form.committeeIds, form.permissions, canApprove ? form.nationalId.trim() : "");
+      addSupervisor(form.name.trim(), form.phone.trim(), form.email.trim(), form.teamIds, form.committeeIds, form.permissions, canApprove ? form.nationalId.trim() : "", form.specialty.trim(), form.photoDataUrl || undefined);
     } else if (modalId) {
-      const { nationalId, ...rest } = form;
-      updateSupervisor(modalId, canApprove ? { ...rest, nationalId: nationalId.trim() } : rest);
+      const { nationalId, specialty, photoDataUrl, ...rest } = form;
+      const patch = { ...rest, specialty: specialty.trim(), photoDataUrl: photoDataUrl || undefined };
+      updateSupervisor(modalId, canApprove ? { ...patch, nationalId: nationalId.trim() } : patch);
     }
     setModalId(null);
   }
@@ -212,7 +228,29 @@ export default function SupervisorsPage() {
         }
       >
         <form id="sup-form" onSubmit={submit} className="grid gap-4">
+          <div className="flex items-center gap-4">
+            <span className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-full border border-line bg-accent text-[22px] font-semibold" style={{ color: "#F4EEE2" }}>
+              {form.photoDataUrl
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={form.photoDataUrl} alt="" className="h-full w-full object-cover" />
+                : (form.name.trim()[0] ?? "؟")}
+            </span>
+            <div>
+              <input ref={photoRef} type="file" accept="image/*" onChange={onPhoto} className="hidden" />
+              <div className="flex gap-2">
+                <Button variant="outline" type="button" onClick={() => photoRef.current?.click()}>
+                  {form.photoDataUrl ? "تغيير الصورة" : "صورة المشرف"}
+                </Button>
+                {form.photoDataUrl && (
+                  <Button variant="ghost" type="button" onClick={() => setForm(f => ({ ...f, photoDataUrl: "" }))}>إزالة</Button>
+                )}
+              </div>
+              <p className="mt-1.5 text-[11.5px] text-text-3">تظهر في صفحة «المشرفون» التعريفيّة — بحدٍّ أقصى ٣ ميغابايت.</p>
+              {photoErr && <p className="text-[11.5px] text-critical">{photoErr}</p>}
+            </div>
+          </div>
           <Field label="الاسم" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
+          <Field label="التخصُّص / المجال" value={form.specialty} onChange={e => setForm({ ...form, specialty: e.target.value })} placeholder="مثال: الإعلام والتصوير" />
           <div className="grid grid-cols-2 gap-3">
             <Field label="الجوّال" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
             <Field label="البريد" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="name@maali.abha" />

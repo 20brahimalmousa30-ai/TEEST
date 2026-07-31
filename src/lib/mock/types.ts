@@ -34,6 +34,19 @@ export type CommitteeTask = {
   createdAt: string;
 };
 
+/** مهمّةٌ تحفيزيّة/ذاتيّة تُرصَد لطالبٍ بعينه، ولكلّ مهمّةٍ نقاطٌ محفِّزة. */
+export type StudentTask = {
+  id: string;
+  studentId: string;
+  title: string;
+  points: number;                    // النقاط التحفيزيّة عند الإنجاز
+  assignedBy?: string;               // مُعرِّف مَن رصد المهمّة (مشرف/أمير)
+  visible: boolean;                  // إظهار/إخفاء عن الطالب
+  dueDate?: string;                  // موعدٌ نهائيّ اختياري
+  done: boolean;
+  createdAt: string;
+};
+
 export type Supervisor = {
   id: string;
   name: string;
@@ -45,6 +58,8 @@ export type Supervisor = {
   teamIds: string[];
   committeeIds: string[];
   permissions: string[];             // البند ١٨: صلاحيات دقيقة يمنحها الأمير لكلّ مشرف
+  photoDataUrl?: string;             // صورةٌ شخصيّة (base64) — تُعرَض في صفحة «المشرفون»
+  specialty?: string;                // التخصُّص/المجال — يُعرَض في صفحة «المشرفون»
 };
 
 /** البند ١٨: كتالوج الصلاحيات الدقيقة الممنوحة للمشرفين.

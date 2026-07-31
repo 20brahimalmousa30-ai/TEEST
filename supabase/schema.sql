@@ -512,3 +512,42 @@ create table if not exists committee_tasks (
   done         boolean not null default false,
   created_at   timestamptz not null default now()
 );
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  المهامّ التحفيزيّة/الذاتيّة للطلاب: يرصدها الأمير/نائبه أو المشرف لطالبٍ بعينه،
+--  ولكلّ مهمّةٍ نقاطٌ محفِّزة. يراها الطالب في صفحة «مهامي» (المرئيّة منها فقط).
+--  ⚠️ شغّل هذا في Supabase.
+-- ═══════════════════════════════════════════════════════════════════════
+create table if not exists student_tasks (
+  id          text primary key,
+  student_id  text not null references students(id) on delete cascade,
+  title       text not null,
+  points      integer not null default 0,   -- النقاط التحفيزيّة عند الإنجاز
+  assigned_by text,                          -- مُعرِّف مَن رصد المهمّة (مشرف/أمير)
+  visible     boolean not null default true, -- إظهار/إخفاء عن الطالب
+  due_date    text,                          -- موعدٌ نهائيّ اختياري
+  done        boolean not null default false,
+  created_at  timestamptz not null default now()
+);
+create index if not exists idx_student_tasks_student on student_tasks (student_id);
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  تعديل قيمة الرسوم من لوحة الأمير: قيمةٌ افتراضيّة تُطبَّق على جميع الطلاب،
+--  مع سجلٍّ تاريخيٍّ لكلّ تغيير. يعدّلها الأمير/نائبه فقط (dbSetDefaultFee).
+--  ⚠️ شغّل هذا في Supabase.
+-- ═══════════════════════════════════════════════════════════════════════
+alter table app_settings add column if not exists default_fee integer not null default 2500;
+
+create table if not exists fee_history (
+  id         text primary key,
+  amount     integer not null,
+  changed_by text,                           -- مُعرِّف مَن غيّر القيمة
+  changed_at timestamptz not null default now()
+);
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  تعريف المشرف: صورةٌ شخصيّة + تخصُّص (يُعرَضان في صفحة «المشرفون» التعريفيّة).
+--  ⚠️ شغّل هذا في Supabase.
+-- ═══════════════════════════════════════════════════════════════════════
+alter table supervisors add column if not exists photo_data_url text;
+alter table supervisors add column if not exists specialty      text;

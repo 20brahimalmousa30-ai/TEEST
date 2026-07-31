@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import type { Team, Student, Supervisor, Committee, CommitteeTask, Invoice, PaymentStatus, OcrExtraction, ConditionsPolicy } from "@/lib/mock/types";
+import type { Team, Student, Supervisor, Committee, CommitteeTask, StudentTask, Invoice, PaymentStatus, OcrExtraction, ConditionsPolicy } from "@/lib/mock/types";
 import {
   loadAllData,
   dbAddTeam, dbUpdateTeam, dbDeleteTeam,
@@ -11,6 +11,8 @@ import {
   dbAddCommittee, dbUpdateCommittee, dbDeleteCommittee,
   dbSetTeamBudget, dbSetCommitteeBudget,
   dbAddCommitteeTask, dbToggleCommitteeTask, dbDeleteCommitteeTask,
+  dbAddStudentTask, dbToggleStudentTask, dbSetStudentTaskVisible, dbDeleteStudentTask,
+  dbSetDefaultFee,
   dbAddInvoice, dbAddInvoices, dbApproveInvoice, dbRejectInvoice, dbDeleteInvoice, dbRestoreInvoice, dbAnalyzeInvoice,
   dbToggleRegField, dbReorderRegField, dbAddRegField, dbUpdateRegField, dbRemoveRegField, dbSetRegOpen,
   dbToggleAttendance, dbSetLogoDisplayMode, dbResetAll,
@@ -55,6 +57,7 @@ export type State = {
   supervisors:  Supervisor[];
   committees:   Committee[];
   committeeTasks: CommitteeTask[];
+  studentTasks: StudentTask[];
   invoices:     Invoice[];
   regFields:    RegField[];
   regOpen:      boolean;
@@ -88,6 +91,8 @@ export type State = {
   associationTaxNumber: string;
   /** سياسة الشروط الإلزاميّة لاعتماد الفواتير تلقائياً */
   conditionsPolicy: ConditionsPolicy;
+  /** البند ٢: قيمة الرسوم الافتراضيّة — يعدّلها الأمير وتُطبَّق على جميع الطلاب */
+  defaultFee: number;
 };
 
 const initialState: State = {
@@ -96,6 +101,7 @@ const initialState: State = {
   supervisors:  [],
   committees:   [],
   committeeTasks: [],
+  studentTasks: [],
   invoices:     [],
   regFields:    initialFields,
   regOpen:      true,
@@ -116,6 +122,7 @@ const initialState: State = {
     taxInvoice: true, associationName: true, associationTaxNumber: true,
     vendorTaxNumber: true, issueDate: true, serviceDetails: true, quantityAndTotal: true,
   },
+  defaultFee: 2500,
 };
 
 export type StoreActions = {
@@ -142,7 +149,7 @@ export type StoreActions = {
   /** يعتمد الأمير الإيصال بمبلغٍ يتحقّق منه يدويّاً (أو يرفضه) */
   reviewReceipt(id: string, approve: boolean, amount?: number): void;
   // Supervisors
-  addSupervisor(name: string, phone: string, email: string, teamIds: string[], committeeIds: string[], permissions: string[], nationalId?: string): void;
+  addSupervisor(name: string, phone: string, email: string, teamIds: string[], committeeIds: string[], permissions: string[], nationalId?: string, specialty?: string, photoDataUrl?: string): void;
   /** استيراد جماعي من ملف Excel/CSV */
   importSupervisors(rows: { name: string; phone: string; email: string }[]): void;
   updateSupervisor(id: string, patch: Partial<Supervisor>): void;
@@ -157,6 +164,13 @@ export type StoreActions = {
   addCommitteeTask(committeeId: string, title: string, assigneeId?: string): void;
   toggleCommitteeTask(id: string, done: boolean): void;
   deleteCommitteeTask(id: string): void;
+  // Student motivational/personal tasks (البند ١ و٣) — staff assigns to a student
+  addStudentTask(studentId: string, title: string, points: number, dueDate?: string): void;
+  toggleStudentTask(id: string, done: boolean): void;
+  setStudentTaskVisible(id: string, visible: boolean): void;
+  deleteStudentTask(id: string): void;
+  // Default fee (البند ٢) — Prince only; applies to all students
+  setDefaultFee(amount: number): void;
   // Invoices
   /** يحلّل صورة فاتورة (base64 data URL) بالذكاء الاصطناعي — قراءةٌ مباشرة (لا متفائلة). */
   analyzeInvoice(imageDataUrl: string): Promise<OcrExtraction>;
@@ -405,7 +419,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       persist(() => dbReviewReceipt(id, approve, amount));
     },
 
-    addSupervisor(name, phone, email, teamIds, committeeIds, permissions, nationalId = "") {
+    addSupervisor(name, phone, email, teamIds, committeeIds, permissions, nationalId = "", specialty = "", photoDataUrl) {
       const code = secureCode();
       const nid = nationalId.trim();
       update(s => ({
@@ -413,9 +427,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           id: uid("s"), name, phone, email, teamIds, committeeIds, permissions, accessCode: code,
           nationalId: nid || undefined,
           nationalIdMasked: nid ? "••••••" + nid.slice(-4) : "",
+          specialty: specialty.trim() || undefined,
+          photoDataUrl: photoDataUrl || undefined,
         }],
       }));
-      persist(() => dbAddSupervisor(name, phone, email, teamIds, committeeIds, permissions, code, nid));
+      persist(() => dbAddSupervisor(name, phone, email, teamIds, committeeIds, permissions, code, nid, specialty, photoDataUrl));
     },
     importSupervisors(rows) {
       update(s => ({
@@ -470,6 +486,37 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     deleteCommitteeTask(id) {
       update(s => ({ committeeTasks: s.committeeTasks.filter(t => t.id !== id) }));
       persist(() => dbDeleteCommitteeTask(id));
+    },
+
+    addStudentTask(studentId, title, points, dueDate) {
+      const t = title.trim();
+      if (!studentId || !t) return;
+      const pts = Math.max(0, Math.floor(points || 0));
+      update(s => ({ studentTasks: [
+        { id: uid("stask"), studentId, title: t, points: pts, visible: true, dueDate: dueDate || undefined, done: false, createdAt: new Date().toISOString() },
+        ...s.studentTasks,
+      ] }));
+      persist(() => dbAddStudentTask(studentId, t, pts, dueDate));
+    },
+    toggleStudentTask(id, done) {
+      update(s => ({ studentTasks: s.studentTasks.map(t => t.id === id ? { ...t, done } : t) }));
+      persist(() => dbToggleStudentTask(id, done));
+    },
+    setStudentTaskVisible(id, visible) {
+      update(s => ({ studentTasks: s.studentTasks.map(t => t.id === id ? { ...t, visible } : t) }));
+      persist(() => dbSetStudentTaskVisible(id, visible));
+    },
+    deleteStudentTask(id) {
+      update(s => ({ studentTasks: s.studentTasks.filter(t => t.id !== id) }));
+      persist(() => dbDeleteStudentTask(id));
+    },
+    setDefaultFee(amount) {
+      const fee = Math.max(0, Math.round(amount));
+      update(s => ({
+        defaultFee: fee,
+        students: s.students.map(st => ({ ...st, totalAmount: fee })),
+      }));
+      persist(() => dbSetDefaultFee(fee));
     },
 
     analyzeInvoice(imageDataUrl) {

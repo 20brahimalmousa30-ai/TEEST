@@ -1,17 +1,21 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
+import { Button } from "@/components/ui/Button";
 import { TeamBadge } from "@/components/ui/TeamBadge";
 import { useStore } from "@/lib/store/StoreProvider";
+import { useSession } from "@/lib/auth/session";
 import { sar } from "@/lib/format";
 
 export default function DashboardPage() {
   useEffect(() => { document.title = "لوحة الأمير — معالي محافظة بلّسمر"; }, []);
   const { teams, students, supervisors, invoices } = useStore();
+  const { session } = useSession();
+  const canEditFee = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
 
   const summary = useMemo(() => ({
     total: students.length,
@@ -79,6 +83,8 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex flex-col gap-6">
+          {canEditFee && <FeeEditor />}
+
           <Card title="آخر الفواتير" action={<Link href="/invoices" className="text-[13px] text-accent hover:underline">الكلّ ←</Link>} padded={false}>
             <ul>
               {recentInvoices.map(inv => (
@@ -123,5 +129,52 @@ export default function DashboardPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** البند ٢: تعديل قيمة الرسوم الافتراضيّة — تُطبَّق على جميع الطلاب (للأمير/نائبه). */
+function FeeEditor() {
+  const { defaultFee, students, setDefaultFee } = useStore();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+
+  function start() { setValue(String(defaultFee)); setEditing(true); }
+  function save() {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) return;
+    setDefaultFee(Math.round(n));
+    setEditing(false);
+  }
+
+  return (
+    <Card title="قيمة الرسوم" action={<span className="text-[11.5px] text-text-3">تُطبَّق على {students.length} شاباً</span>}>
+      {editing ? (
+        <div className="grid gap-3">
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              className="num w-40 rounded border border-line-strong bg-surface px-3 py-2 text-[15px]"
+            />
+            <span className="text-[13px] text-text-3">ر.س</span>
+          </div>
+          <p className="text-[11.5px] text-text-3">سيُحدَّث إجماليّ الرسوم لجميع الطلاب إلى هذه القيمة، ويُحفَظ التغيير في السجلّ.</p>
+          <div className="flex gap-2">
+            <Button variant="primary" onClick={save}>حفظ وتطبيق</Button>
+            <Button variant="outline" onClick={() => setEditing(false)}>إلغاء</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-baseline justify-between">
+          <div>
+            <div className="text-[11px] tracking-[.14em] text-text-3">الرسوم الحاليّة لكلّ شاب</div>
+            <div className="num mt-1 text-[24px] text-text">{sar(defaultFee)} <span className="text-[12px] text-text-3">SAR</span></div>
+          </div>
+          <Button variant="outline" onClick={start}>تعديل</Button>
+        </div>
+      )}
+    </Card>
   );
 }

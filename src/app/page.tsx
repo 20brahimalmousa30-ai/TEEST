@@ -36,6 +36,8 @@ export default function LandingPage() {
             <span className="text-[14px] font-medium text-accent-warm-2">١٤٤٨هـ</span>
           </Link>
           <nav className="flex items-center gap-6 text-sm text-text-2">
+            <Link href="/committees-info" className="hidden hover:text-accent-warm-2 sm:inline">اللجان</Link>
+            <Link href="/supervisors-info" className="hidden hover:text-accent-warm-2 sm:inline">المشرفون</Link>
             <Link href="/register" className="hidden hover:text-accent-warm-2 sm:inline">تسجيل شاب</Link>
             <a href="#message" className="hidden hover:text-text sm:inline">رسالة السفرة</a>
             <Link

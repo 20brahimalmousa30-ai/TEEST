@@ -17,7 +17,7 @@ const emptyForm = { name: "", description: "", color: swatches[0], supervisorIds
 
 export default function CommitteesPage() {
   useEffect(() => { document.title = "اللجان — معالي محافظة بلّسمر"; }, []);
-  const { committees, supervisors, invoices, committeeTasks, addCommittee, deleteCommittee, setCommitteeBudget } = useStore();
+  const { committees, supervisors, invoices, committeeTasks, addCommittee, updateCommittee, deleteCommittee, setCommitteeBudget } = useStore();
   const { session } = useSession();
   const canApprove = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
   // المصروف المعتمد لكلّ لجنة (لعرض المتبقّي).
@@ -30,11 +30,34 @@ export default function CommitteesPage() {
     return m;
   }, [invoices]);
   const [open, setOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [tasksFor, setTasksFor] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<string | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [imgErr, setImgErr] = useState("");
   const imgRef = useRef<HTMLInputElement | null>(null);
+
+  function openNew() {
+    setEditId(null);
+    setForm({ ...emptyForm });
+    setImgErr("");
+    setOpen(true);
+  }
+
+  function openEdit(id: string) {
+    const c = committees.find(x => x.id === id);
+    if (!c) return;
+    setEditId(id);
+    setForm({
+      name: c.name,
+      description: c.description,
+      color: c.color,
+      supervisorIds: [...c.supervisorIds],
+      imageDataUrl: c.imageDataUrl ?? "",
+    });
+    setImgErr("");
+    setOpen(true);
+  }
 
   function toggleSup(id: string) {
     setForm(f => f.supervisorIds.includes(id)
@@ -62,8 +85,19 @@ export default function CommitteesPage() {
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) return;
-    addCommittee(form.name.trim(), form.description.trim() || "لجنةٌ جديدة.", form.supervisorIds, form.color, form.imageDataUrl || undefined);
+    if (editId) {
+      updateCommittee(editId, {
+        name: form.name.trim(),
+        description: form.description.trim() || "لجنةٌ جديدة.",
+        supervisorIds: form.supervisorIds,
+        color: form.color,
+        imageDataUrl: form.imageDataUrl || undefined,
+      });
+    } else {
+      addCommittee(form.name.trim(), form.description.trim() || "لجنةٌ جديدة.", form.supervisorIds, form.color, form.imageDataUrl || undefined);
+    }
     setForm({ ...emptyForm });
+    setEditId(null);
     setOpen(false);
   }
 
@@ -75,7 +109,7 @@ export default function CommitteesPage() {
         eyebrow={`اللجان · ${committees.length} لجنة`}
         title="اللجان"
         subtitle="سبعُ لجان (أو أكثر) تدير التفاصيل التشغيليّة للرحلة. المشرف الواحد قد يكون عضواً في أكثر من لجنةٍ وفي فريقٍ معاً."
-        action={<Button variant="primary" onClick={() => setOpen(true)}>+ لجنةٌ جديدة</Button>}
+        action={<Button variant="primary" onClick={openNew}>+ لجنةٌ جديدة</Button>}
       />
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -94,6 +128,7 @@ export default function CommitteesPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Pill variant="neutral">{members.length} مشرفاً</Pill>
+                  <button onClick={() => openEdit(c.id)} aria-label="تعديل اللجنة" className="text-text-3 hover:text-accent">✎</button>
                   <button onClick={() => setToDelete(c.id)} aria-label="حذف اللجنة" className="text-text-3 hover:text-critical">×</button>
                 </div>
               </div>
@@ -132,11 +167,11 @@ export default function CommitteesPage() {
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title="إضافة لجنةٍ جديدة"
+        title={editId ? "تعديل اللجنة" : "إضافة لجنةٍ جديدة"}
         footer={
           <>
             <Button variant="outline" type="button" onClick={() => setOpen(false)}>إلغاء</Button>
-            <Button type="submit" form="new-committee">إنشاء اللجنة</Button>
+            <Button type="submit" form="new-committee">{editId ? "حفظ التعديلات" : "إنشاء اللجنة"}</Button>
           </>
         }
       >

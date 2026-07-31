@@ -1,4 +1,4 @@
-import type { Team, Student, Supervisor, Committee, Invoice } from "@/lib/mock/types";
+import type { Team, Student, Supervisor, Committee, Invoice, StudentTask } from "@/lib/mock/types";
 import type { RegField } from "@/lib/store/StoreProvider";
 
 /**
@@ -66,6 +66,8 @@ export const rowToSupervisor = (r: any): Supervisor => ({
   teamIds: [],
   committeeIds: [],
   permissions: r.permissions ?? [],
+  photoDataUrl: r.photo_data_url ?? undefined,
+  specialty: r.specialty ?? undefined,
 });
 
 export const supervisorToRow = (s: Partial<Supervisor>) => ({
@@ -77,6 +79,20 @@ export const supervisorToRow = (s: Partial<Supervisor>) => ({
   ...(s.email !== undefined && { email: s.email }),
   ...(s.accessCode !== undefined && { access_code: s.accessCode }),
   ...(s.permissions !== undefined && { permissions: s.permissions }),
+  ...(s.photoDataUrl !== undefined && { photo_data_url: s.photoDataUrl }),
+  ...(s.specialty !== undefined && { specialty: s.specialty }),
+});
+
+export const rowToStudentTask = (r: any): StudentTask => ({
+  id: r.id,
+  studentId: r.student_id,
+  title: r.title,
+  points: r.points ?? 0,
+  assignedBy: r.assigned_by ?? undefined,
+  visible: r.visible ?? true,
+  dueDate: r.due_date ?? undefined,
+  done: r.done ?? false,
+  createdAt: r.created_at ?? "",
 });
 
 export const rowToStudent = (r: any): Student => ({

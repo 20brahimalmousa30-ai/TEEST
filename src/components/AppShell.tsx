@@ -22,6 +22,7 @@ const fullNav: NavGroup[] = [
       { href: "/committees",  label: "اللجان",       icon: <IconCommittee /> },
       { href: "/students",    label: "الشباب",        icon: <IconStudents /> },
       { href: "/supervisors", label: "المشرفون",     icon: <IconSupervisor /> },
+      { href: "/tasks",       label: "رصد المهام",    icon: <IconTasks /> },
     ],
   },
   {
@@ -50,6 +51,7 @@ const supervisorNav: NavGroup[] = [
     items: [
       { href: "/my-team",    label: "فريقي",           icon: <IconTeams /> },
       { href: "/my-committee", label: "لجنتي",         icon: <IconCommittee /> },
+      { href: "/tasks",       label: "رصد المهام",     icon: <IconTasks /> },
       { href: "/leaderboard", label: "قائمة الصدارة", icon: <IconTrophy /> },
     ],
   },
@@ -91,7 +93,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     // ننتظر تحميل المتجر أوّلاً حتى لا نطرد المشرف قبل قراءة صلاحياته.
     if (session.role === "SUPERVISOR" && hydrated) {
       const allowedPrefixes = [
-        "/my-team", "/my-committee", "/leaderboard", "/settings/account", "/me",
+        "/my-team", "/my-committee", "/tasks", "/leaderboard", "/settings/account", "/me",
         ...(myPerms.includes("invoices")   ? ["/invoices"]   : []),
         ...(myPerms.includes("students")   ? ["/students"]   : []),
         ...(myPerms.includes("teams")      ? ["/teams"]      : []),
@@ -295,3 +297,4 @@ function IconSettings()   { return <svg width="18" height="18" viewBox="0 0 24 2
 function IconUser()       { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="8" r="3.5"/><path d="M5 21c0-3.9 3.1-7 7-7s7 3.1 7 7"/></svg>; }
 function IconImage()      { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.8"/><path d="M4 18l5-5 4 4 3-3 4 4"/></svg>; }
 function IconCrown()      { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M3 8l4 4 5-7 5 7 4-4-2 11H5L3 8z"/></svg>; }
+function IconTasks()      { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg>; }

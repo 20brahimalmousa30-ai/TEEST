@@ -17,7 +17,7 @@ import { sar } from "@/lib/format";
 export default function MePage() {
   const { session, ready } = useSession();
   const router = useRouter();
-  const { students, teams, submitReceipt, setStudentPhoto, hydrated, loadError } = useStore();
+  const { students, teams, studentTasks, submitReceipt, setStudentPhoto, hydrated, loadError } = useStore();
   const [payOpen, setPayOpen] = useState(false);
   const [photoErr, setPhotoErr] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -88,6 +88,9 @@ export default function MePage() {
 
   const team = teams.find(t => t.id === student.teamId);
   const paidPct = Math.round((student.paidAmount / student.totalAmount) * 100);
+  // مهامّي: اللقطة الخاصّة بالمستفيد تُحمّل مهامّه المرئيّة فقط.
+  const myTasks = studentTasks.filter(t => t.studentId === student.id);
+  const myPoints = myTasks.filter(t => t.done).reduce((sum, t) => sum + t.points, 0);
 
   return (
     <main className="min-h-screen">
@@ -196,6 +199,33 @@ export default function MePage() {
             <p className="mt-4 text-[12px] text-text-3">إن تغيّرت بيانات الطوارئ، أخبر مشرف فريقك.</p>
           </Card>
         </div>
+
+        <section className="mt-6">
+          <Card title="مهامي" action={<span className="text-[11.5px] text-text-3">{myTasks.filter(t => !t.done).length} مفتوحة · {myPoints} نقطة</span>}>
+            {myTasks.length === 0 ? (
+              <p className="py-4 text-center text-[13px] text-text-3">لا مهامّ مرصودة لك بعد — تابع مشرفك.</p>
+            ) : (
+              <ul className="grid gap-2">
+                {myTasks.map(t => (
+                  <li key={t.id} className="flex items-start gap-3 rounded border border-line px-3 py-2.5">
+                    <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] ${t.done ? "bg-ok text-[#F4EEE2]" : "border border-line-strong text-text-3"}`}>
+                      {t.done ? "✓" : ""}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className={`text-[13.5px] ${t.done ? "text-text-3 line-through" : "text-text"}`}>{t.title}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <Pill variant={t.done ? "ok" : "info"}>{t.points} نقطة</Pill>
+                        {t.dueDate && <span className="num text-[11px] text-text-3">حتى {t.dueDate}</span>}
+                        {t.done && <span className="text-[11px] text-ok">تم الإنجاز</span>}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-4 text-[12px] text-text-3">هذه مهامّك التحفيزيّة — يعتمد مشرفك إنجازها فتُضاف نقاطها إلى رصيدك.</p>
+          </Card>
+        </section>
 
         <p className="mt-10 text-center text-[12.5px] text-text-3">
           <Link href="/login" className="hover:text-accent">بدّل الحساب →</Link>
