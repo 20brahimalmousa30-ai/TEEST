@@ -56,6 +56,17 @@ create table if not exists committees (
   budget         integer not null default 0   -- موازنة اللجنة (ر.س) — للأمير/نائبه تعديلها
 );
 
+-- ── مهامّ اللجان ─────────────────────────────────────────────────────────
+-- يضيفها الأمير/نائبه أو أحد مشرفي اللجنة، ويمكن تخصيصها لعضوٍ بعينه.
+create table if not exists committee_tasks (
+  id           text primary key,
+  committee_id text not null references committees(id) on delete cascade,
+  title        text not null,
+  assignee_id  text,                       -- مشرف مخصَّص (اختياري)
+  done         boolean not null default false,
+  created_at   timestamptz not null default now()
+);
+
 -- ── ربط المشرفين بالفرق واللجان (many-to-many حقيقي) ──────────────────────
 -- المصدر الوحيد لعلاقة «المشرف يُشرف على فريق/لجنة». يحلّ محلّ:
 --   supervisors.team_ids · supervisors.committee_ids · committees.supervisor_ids
@@ -488,3 +499,16 @@ as $$
     and code_hash = crypt(p_code, code_hash)
   limit 1;
 $$;
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  مهامّ اللجان: يضيفها الأمير/نائبه أو أحد مشرفي اللجنة، وتُخصَّص لعضوٍ اختياريّاً.
+--  ⚠️ شغّل هذا في Supabase.
+-- ═══════════════════════════════════════════════════════════════════════
+create table if not exists committee_tasks (
+  id           text primary key,
+  committee_id text not null references committees(id) on delete cascade,
+  title        text not null,
+  assignee_id  text,
+  done         boolean not null default false,
+  created_at   timestamptz not null default now()
+);

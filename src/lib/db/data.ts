@@ -193,7 +193,7 @@ export async function loadAllData(): Promise<State> {
   };
 
   const base: State = {
-    teams: [], students: [], supervisors: [], committees: [],
+    teams: [], students: [], supervisors: [], committees: [], committeeTasks: [],
     invoices: [], trashInvoices: [], attendance: {},
     ...publicState,
   };
@@ -223,7 +223,7 @@ export async function loadAllData(): Promise<State> {
   // في كلّ تحميلٍ للصفحة (صورةٌ واحدة ≈ ٣٠٠ ك.ب) وتتضخّم خطّياً مع عدد
   // المستفيدين، فصارت أكبر سببٍ لبطء الموقع. تُجلَب الصور الآن عند الطلب
   // فقط عبر مسار /api/students/[id]/image عند عرض صورةٍ بعينها.
-  const [teams, students, supervisors, committees, invoices, attRows, asgRows] =
+  const [teams, students, supervisors, committees, invoices, attRows, asgRows, cTasks] =
     await Promise.all([
       db.from("teams").select("*").order("points", { ascending: false }),
       db.from("students").select(STUDENT_LEAN_COLUMNS).order("points", { ascending: false }),
@@ -232,6 +232,7 @@ export async function loadAllData(): Promise<State> {
       db.from("invoices").select(INVOICE_LEAN_COLUMNS).order("created_at", { ascending: false }),
       db.from("attendance").select("*"),
       db.from("supervisor_assignments").select("*"),
+      db.from("committee_tasks").select("*").order("created_at", { ascending: false }),
     ]);
 
   const attendance: Record<string, boolean[]> = {};
@@ -284,6 +285,10 @@ export async function loadAllData(): Promise<State> {
     committees:     (committees.data ?? []).map(r => ({
       ...rowToCommittee(r),
       supervisorIds: commSups[r.id] ?? [],
+    })),
+    committeeTasks: (cTasks.data ?? []).map(t => ({
+      id: t.id, committeeId: t.committee_id, title: t.title,
+      assigneeId: t.assignee_id ?? undefined, done: !!t.done, createdAt: t.created_at,
     })),
     invoices:       allInvoices.filter(i => !trashIds.has(i.id)),
     trashInvoices:  allInvoices.filter(i => trashIds.has(i.id)),
@@ -613,6 +618,46 @@ export async function dbSetTeamBudget(id: string, budget: number) {
 export async function dbSetCommitteeBudget(id: string, budget: number) {
   await requireAdmin();
   await getSupabase().from("committees").update({ budget: Math.max(0, Math.round(budget)) }).eq("id", id);
+}
+
+/* ─────────────────────────── مهامّ اللجان ───────────────────────────
+ * يضيفها/يعدّلها الأمير/نائبه أو مشرفٌ عضوٌ في هذه اللجنة تحديداً. */
+async function requireCommitteeAccess(committeeId: string): Promise<DbSession> {
+  const session = await requireStaff();
+  if (ADMIN.includes(session.role)) return session;
+  if (session.role === "SUPERVISOR" && session.supervisorId) {
+    const { data } = await getSupabase().from("supervisor_assignments")
+      .select("supervisor_id").eq("supervisor_id", session.supervisorId)
+      .eq("target_kind", "committee").eq("target_id", committeeId).limit(1);
+    if (data && data.length) return session;
+  }
+  throw new Error("غير مصرّح — لست عضواً في هذه اللجنة.");
+}
+/** اللجنة المالكة لمهمّةٍ ما (للتحقّق من الصلاحيّة). */
+async function committeeOfTask(id: string): Promise<string | null> {
+  const { data } = await getSupabase().from("committee_tasks").select("committee_id").eq("id", id).single();
+  return data?.committee_id ?? null;
+}
+export async function dbAddCommitteeTask(committeeId: string, title: string, assigneeId?: string) {
+  await requireCommitteeAccess(committeeId);
+  const t = title.trim();
+  if (!t) return;
+  await getSupabase().from("committee_tasks").insert({
+    id: uid("ctask"), committee_id: committeeId, title: t,
+    assignee_id: assigneeId || null, done: false,
+  });
+}
+export async function dbToggleCommitteeTask(id: string, done: boolean) {
+  const cid = await committeeOfTask(id);
+  if (!cid) throw new Error("المهمّة غير موجودة.");
+  await requireCommitteeAccess(cid);
+  await getSupabase().from("committee_tasks").update({ done }).eq("id", id);
+}
+export async function dbDeleteCommitteeTask(id: string) {
+  const cid = await committeeOfTask(id);
+  if (!cid) return;
+  await requireCommitteeAccess(cid);
+  await getSupabase().from("committee_tasks").delete().eq("id", id);
 }
 
 /* ─────────────────────────── الفواتير ─────────────────────────── */

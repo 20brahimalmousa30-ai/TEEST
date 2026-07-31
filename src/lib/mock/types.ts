@@ -25,6 +25,15 @@ export type Committee = {
   imageDataUrl?: string;             // صورة مخصَّصة (base64) — يُشتقّ منها اللون تلقائياً
 };
 
+export type CommitteeTask = {
+  id: string;
+  committeeId: string;
+  title: string;
+  assigneeId?: string;               // مشرف اللجنة المخصَّص لها (اختياري)
+  done: boolean;
+  createdAt: string;
+};
+
 export type Supervisor = {
   id: string;
   name: string;

@@ -9,6 +9,7 @@ import { useStore } from "@/lib/store/StoreProvider";
 import { useSession } from "@/lib/auth/session";
 import { fileToDataUrl, extractDominantColor } from "@/lib/image";
 import { BudgetEditor } from "@/components/BudgetEditor";
+import { CommitteeTasks } from "@/components/CommitteeTasks";
 import { useMemo } from "react";
 
 const swatches = ["#B54A2E", "#1E4635", "#5F8A5C", "#4E6B7A", "#B8955A", "#7A5B2E", "#8C5A3C"];
@@ -16,7 +17,7 @@ const emptyForm = { name: "", description: "", color: swatches[0], supervisorIds
 
 export default function CommitteesPage() {
   useEffect(() => { document.title = "اللجان — معالي محافظة بلّسمر"; }, []);
-  const { committees, supervisors, invoices, addCommittee, deleteCommittee, setCommitteeBudget } = useStore();
+  const { committees, supervisors, invoices, committeeTasks, addCommittee, deleteCommittee, setCommitteeBudget } = useStore();
   const { session } = useSession();
   const canApprove = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
   // المصروف المعتمد لكلّ لجنة (لعرض المتبقّي).
@@ -29,6 +30,7 @@ export default function CommitteesPage() {
     return m;
   }, [invoices]);
   const [open, setOpen] = useState(false);
+  const [tasksFor, setTasksFor] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<string | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [imgErr, setImgErr] = useState("");
@@ -114,6 +116,14 @@ export default function CommitteesPage() {
                 canEdit={canApprove}
                 onSave={n => setCommitteeBudget(c.id, n)}
               />
+              <button
+                type="button"
+                onClick={() => setTasksFor(c.id)}
+                className="mt-3 w-full rounded border border-line px-3 py-2 text-[13px] text-text-2 hover:border-accent hover:text-text"
+              >
+                ✦ مهامّ اللجنة{committeeTasks.filter(t => t.committeeId === c.id && !t.done).length > 0
+                  ? ` (${committeeTasks.filter(t => t.committeeId === c.id && !t.done).length} مفتوحة)` : ""}
+              </button>
             </article>
           );
         })}
@@ -178,6 +188,18 @@ export default function CommitteesPage() {
             </div>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        open={tasksFor !== null}
+        onClose={() => setTasksFor(null)}
+        title={`مهامّ ${committees.find(c => c.id === tasksFor)?.name ?? "اللجنة"}`}
+        size="lg"
+        footer={<Button variant="outline" onClick={() => setTasksFor(null)}>إغلاق</Button>}
+      >
+        {tasksFor && (
+          <CommitteeTasks committeeId={tasksFor} memberIds={committees.find(c => c.id === tasksFor)?.supervisorIds ?? []} />
+        )}
       </Modal>
 
       <Confirm

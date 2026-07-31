@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import type { Team, Student, Supervisor, Committee, Invoice, PaymentStatus, OcrExtraction, ConditionsPolicy } from "@/lib/mock/types";
+import type { Team, Student, Supervisor, Committee, CommitteeTask, Invoice, PaymentStatus, OcrExtraction, ConditionsPolicy } from "@/lib/mock/types";
 import {
   loadAllData,
   dbAddTeam, dbUpdateTeam, dbDeleteTeam,
@@ -10,6 +10,7 @@ import {
   dbAddSupervisor, dbUpdateSupervisor, dbDeleteSupervisor, dbImportSupervisors,
   dbAddCommittee, dbUpdateCommittee, dbDeleteCommittee,
   dbSetTeamBudget, dbSetCommitteeBudget,
+  dbAddCommitteeTask, dbToggleCommitteeTask, dbDeleteCommitteeTask,
   dbAddInvoice, dbAddInvoices, dbApproveInvoice, dbRejectInvoice, dbDeleteInvoice, dbRestoreInvoice, dbAnalyzeInvoice,
   dbToggleRegField, dbReorderRegField, dbAddRegField, dbUpdateRegField, dbRemoveRegField, dbSetRegOpen,
   dbToggleAttendance, dbSetLogoDisplayMode, dbResetAll,
@@ -53,6 +54,7 @@ export type State = {
   students:     Student[];
   supervisors:  Supervisor[];
   committees:   Committee[];
+  committeeTasks: CommitteeTask[];
   invoices:     Invoice[];
   regFields:    RegField[];
   regOpen:      boolean;
@@ -93,6 +95,7 @@ const initialState: State = {
   students:     [],
   supervisors:  [],
   committees:   [],
+  committeeTasks: [],
   invoices:     [],
   regFields:    initialFields,
   regOpen:      true,
@@ -150,6 +153,10 @@ export type StoreActions = {
   deleteCommittee(id: string): void;
   /** موازنة اللجنة — للأمير/نائبه فقط */
   setCommitteeBudget(id: string, budget: number): void;
+  /** مهامّ اللجنة — للأمير/نائبه أو مشرف اللجنة */
+  addCommitteeTask(committeeId: string, title: string, assigneeId?: string): void;
+  toggleCommitteeTask(id: string, done: boolean): void;
+  deleteCommitteeTask(id: string): void;
   // Invoices
   /** يحلّل صورة فاتورة (base64 data URL) بالذكاء الاصطناعي — قراءةٌ مباشرة (لا متفائلة). */
   analyzeInvoice(imageDataUrl: string): Promise<OcrExtraction>;
@@ -446,6 +453,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const b = Math.max(0, Math.round(budget));
       update(s => ({ committees: s.committees.map(x => x.id === id ? { ...x, budget: b } : x) }));
       persist(() => dbSetCommitteeBudget(id, b));
+    },
+    addCommitteeTask(committeeId, title, assigneeId) {
+      const t = title.trim();
+      if (!t) return;
+      update(s => ({ committeeTasks: [
+        { id: uid("ctask"), committeeId, title: t, assigneeId: assigneeId || undefined, done: false, createdAt: new Date().toISOString() },
+        ...s.committeeTasks,
+      ] }));
+      persist(() => dbAddCommitteeTask(committeeId, t, assigneeId));
+    },
+    toggleCommitteeTask(id, done) {
+      update(s => ({ committeeTasks: s.committeeTasks.map(t => t.id === id ? { ...t, done } : t) }));
+      persist(() => dbToggleCommitteeTask(id, done));
+    },
+    deleteCommitteeTask(id) {
+      update(s => ({ committeeTasks: s.committeeTasks.filter(t => t.id !== id) }));
+      persist(() => dbDeleteCommitteeTask(id));
     },
 
     analyzeInvoice(imageDataUrl) {

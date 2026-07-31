@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { useSession } from "@/lib/auth/session";
 import { useStore } from "@/lib/store/StoreProvider";
+import { CommitteeTasks } from "@/components/CommitteeTasks";
 
 export default function MyCommitteePage() {
   const { session, ready } = useSession();
@@ -56,22 +57,7 @@ export default function MyCommitteePage() {
           </ul>
         </Card>
 
-        <Card title="اجتماعات اللجنة" action={<span className="text-[11.5px] text-text-3">آخر ٤ أيام</span>}>
-          <ol className="grid gap-3">
-            <li className="border-b border-line pb-3">
-              <div className="text-[12.5px] text-text-3">قبل ٦ ساعات</div>
-              <div className="mt-1 text-[13.5px] text-text">مراجعة مسار الإخلاء من قاعة الفعاليّة الرئيسة.</div>
-            </li>
-            <li className="border-b border-line pb-3">
-              <div className="text-[12.5px] text-text-3">الأمس ٢٠:٤٠</div>
-              <div className="mt-1 text-[13.5px] text-text">توزيع مستلزمات الإسعافات الأوّليّة على مواقع الأنشطة.</div>
-            </li>
-            <li>
-              <div className="text-[12.5px] text-text-3">قبل يومَين</div>
-              <div className="mt-1 text-[13.5px] text-text">تدريب مشرفي الفرق على استجابة الحالات الطارئة.</div>
-            </li>
-          </ol>
-        </Card>
+        <CommitteeTasks committeeId={committee.id} memberIds={committee.supervisorIds} />
       </div>
     </div>
   );

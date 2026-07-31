@@ -106,10 +106,10 @@ export default function StudentsPage() {
   async function exportFiltered() {
     const rows = filtered.map(s => {
       const t = teams.find(t => t.id === s.teamId);
-      // الأمير/نائبه: الرقم الحقيقيّ الكامل (أو «غير مسجَّل») — كما في الواجهة والـ PDF.
-      //  المشرف: يبقى القناع (لقطته لا تحوي الرقم الحقيقيّ أصلاً — حمايةٌ متعمَّدة).
-      const nid = canApprove ? (s.nationalId?.trim() || "غير مسجَّل") : s.nationalIdMasked;
-      return [s.name, nid, s.phone, s.grade, s.section, t?.name ?? "—", s.attendance, s.points,
+      // رقم الهويّة بلا قناع: الرقم الحقيقيّ (أو «غير مسجَّل»). المشرف لا يحوي الرقم
+      //  الحقيقيّ في لقطته أصلاً (تجريدٌ خادميّ)، فيظهر له «غير مسجَّل».
+      const nid = s.nationalId?.trim() || "غير مسجَّل";
+      return [s.name, nid, s.phone, s.grade, s.section, t?.name ?? "—", s.points,
         s.paymentStatus === "PAID" ? "مسدَّد" : s.paymentStatus === "PARTIAL" ? "جزئي" : "معلّق"];
     });
     await exportXlsx({
@@ -119,12 +119,11 @@ export default function StudentsPage() {
       subtitle: `${filtered.length} شاب`,
       columns: [
         { header: "الاسم", width: 26, align: "right" },
-        { header: "الهويّة", width: 16, align: "center" },
+        { header: "رقم الهويّة", width: 16, align: "center" },
         { header: "الجوّال", width: 16, align: "center" },
         { header: "الصف", width: 14, align: "center" },
         { header: "القسم", width: 12, align: "center" },
-        { header: "الفريق", width: 18, align: "right" },
-        { header: "الحضور %", width: 12, align: "center", numFmt: "0" },
+        { header: "الأسرة (الفريق)", width: 20, align: "right" },
         { header: "النقاط", width: 11, align: "center", numFmt: "#,##0" },
         { header: "السداد", width: 13, align: "center" },
       ],
