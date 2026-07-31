@@ -1,6 +1,6 @@
 "use server";
 import { getSupabase } from "@/lib/supabase/server";
-import type { Team, Student, Supervisor, Committee, Invoice, PaymentStatus } from "@/lib/mock/types";
+import type { Team, Student, Supervisor, Committee, Invoice, PaymentStatus, ActivityAnnouncement } from "@/lib/mock/types";
 import type { RegField, LogoDisplayMode, State } from "@/lib/store/StoreProvider";
 import type { LoginResult } from "./types";
 import {
@@ -10,6 +10,7 @@ import {
   rowToStudent, studentToRow,
   rowToInvoice, invoiceToRow,
   rowToRegField, rowToStudentTask,
+  rowToActivityAnnouncement,
 } from "./mappers";
 import { motivations as DEFAULT_MOTIVATIONS, tickerPhrases as DEFAULT_TICKER } from "@/lib/motivations";
 import type { PageMarqueeMap } from "@/lib/pageMarquees";
@@ -196,7 +197,7 @@ export async function loadAllData(): Promise<State> {
 
   const base: State = {
     teams: [], students: [], supervisors: [], committees: [], committeeTasks: [],
-    studentTasks: [],
+    studentTasks: [], announcements: [],
     invoices: [], trashInvoices: [], trashStudents: [], attendance: {},
     ...publicState,
   };
@@ -207,12 +208,16 @@ export async function loadAllData(): Promise<State> {
   // المستفيد: سجلُّه وفريقُه فقط.
   if (session.role === "BENEFICIARY") {
     if (!session.studentId) return base;
-    const [meRow, teams, myTasks] = await Promise.all([
+    const [meRow, teams, myTasks, committees, anns] = await Promise.all([
       db.from("students").select("*").eq("id", session.studentId).single(),
       db.from("teams").select("*").order("points", { ascending: false }),
       // البند ١: يرى الطالب مهامّه المرئيّة فقط (visible=true).
       db.from("student_tasks").select("*")
         .eq("student_id", session.studentId).eq("visible", true)
+        .order("created_at", { ascending: false }),
+      // لوحة الإعلانات: يرى الطالبُ أسماءَ اللجان (غيرُ حسّاسة) والإعلاناتِ الفعّالة فقط.
+      db.from("committees").select("id,name,color,description"),
+      db.from("activity_announcements").select("*").eq("active", true)
         .order("created_at", { ascending: false }),
     ]);
     // حسابٌ في سلة المحذوفات = محذوفٌ فعلياً في نظر المستفيد؛ لا بيانات له.
@@ -222,6 +227,8 @@ export async function loadAllData(): Promise<State> {
       teams: (teams.data ?? []).map(rowToTeam),
       students: meRow.data ? [rowToStudent(meRow.data)] : [],
       studentTasks: (myTasks.data ?? []).map(rowToStudentTask),
+      committees: (committees.data ?? []).map(rowToCommittee),
+      announcements: (anns.data ?? []).map(rowToActivityAnnouncement),
     };
   }
 
@@ -236,7 +243,7 @@ export async function loadAllData(): Promise<State> {
   // في كلّ تحميلٍ للصفحة (صورةٌ واحدة ≈ ٣٠٠ ك.ب) وتتضخّم خطّياً مع عدد
   // المستفيدين، فصارت أكبر سببٍ لبطء الموقع. تُجلَب الصور الآن عند الطلب
   // فقط عبر مسار /api/students/[id]/image عند عرض صورةٍ بعينها.
-  const [teams, students, supervisors, committees, invoices, attRows, asgRows, cTasks, sTasks] =
+  const [teams, students, supervisors, committees, invoices, attRows, asgRows, cTasks, sTasks, anns] =
     await Promise.all([
       db.from("teams").select("*").order("points", { ascending: false }),
       db.from("students").select(STUDENT_LEAN_COLUMNS).order("points", { ascending: false }),
@@ -247,6 +254,7 @@ export async function loadAllData(): Promise<State> {
       db.from("supervisor_assignments").select("*"),
       db.from("committee_tasks").select("*").order("created_at", { ascending: false }),
       db.from("student_tasks").select("*").order("created_at", { ascending: false }),
+      db.from("activity_announcements").select("*").order("created_at", { ascending: false }),
     ]);
 
   const attendance: Record<string, boolean[]> = {};
@@ -309,6 +317,7 @@ export async function loadAllData(): Promise<State> {
       assigneeId: t.assignee_id ?? undefined, done: !!t.done, createdAt: t.created_at,
     })),
     studentTasks:   (sTasks.data ?? []).map(rowToStudentTask),
+    announcements:  (anns.data ?? []).map(rowToActivityAnnouncement),
     invoices:       allInvoices.filter(i => !trashIds.has(i.id)),
     trashInvoices:  allInvoices.filter(i => trashIds.has(i.id)),
     attendance,
@@ -828,6 +837,49 @@ export async function dbDeleteStudentTask(id: string) {
 export async function dbDeleteActivityBatch(batchId: string) {
   await requireStaff();
   await getSupabase().from("student_tasks").delete().eq("batch_id", batchId);
+}
+
+/* ─────────── لوحة إعلانات الأنشطة (البند الجديد) ───────────
+ *  يعلن مشرفُ اللجنة عن نشاطٍ وقيمتِه بالنقاط في لجانه فقط؛ الأمير/نائبه في أيّ
+ *  لجنة. يراه الطلابُ في لوحةٍ (كلّ اللجان أو لجنةٍ محدّدة)، ويرصده المشرفُ لمن
+ *  أنجزه عبر اختياره من المُعلَن. الحُرّاسُ خادميّون (لا يكفي إخفاءُ الواجهة). */
+
+/** يتحقّق من صلاحيّة التصرّف في إعلانٍ قائم عبر لجنته. */
+async function requireAnnouncementAccess(id: string): Promise<DbSession> {
+  const s = await requireStaff();
+  if (ADMIN.includes(s.role)) return s;
+  const { data } = await getSupabase()
+    .from("activity_announcements").select("committee_id").eq("id", id).single();
+  if (data?.committee_id) return requireCommitteeAccess(data.committee_id);
+  throw new Error("غير مصرّح.");
+}
+
+export async function dbAddAnnouncement(input: { title: string; points: number; committeeId: string }) {
+  const s = await requireCommitteeAccess(input.committeeId);
+  const title = input.title.trim();
+  if (!title || !input.committeeId) return;
+  const pts = Math.max(0, Math.trunc(input.points || 0));
+  await getSupabase().from("activity_announcements").insert({
+    id: uid("ann"), title, points: pts, committee_id: input.committeeId,
+    created_by: s.supervisorId ?? s.phone ?? null, active: true,
+  });
+}
+
+export async function dbUpdateAnnouncement(
+  id: string, patch: { title?: string; points?: number; active?: boolean },
+) {
+  await requireAnnouncementAccess(id);
+  const upd: Record<string, unknown> = {};
+  if (patch.title !== undefined) upd.title = patch.title.trim();
+  if (patch.points !== undefined) upd.points = Math.max(0, Math.trunc(patch.points || 0));
+  if (patch.active !== undefined) upd.active = patch.active;
+  if (Object.keys(upd).length === 0) return;
+  await getSupabase().from("activity_announcements").update(upd).eq("id", id);
+}
+
+export async function dbDeleteAnnouncement(id: string) {
+  await requireAnnouncementAccess(id);
+  await getSupabase().from("activity_announcements").delete().eq("id", id);
 }
 
 /* ─────────── قيمة الرسوم الافتراضيّة (البند ٢) ───────────

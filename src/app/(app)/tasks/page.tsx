@@ -25,7 +25,7 @@ export default function ActivitiesPage() {
   useEffect(() => { document.title = "رصد الأنشطة — معالي محافظة بلّسمر"; }, []);
   const { session } = useSession();
   const {
-    students, teams, supervisors, committees, studentTasks,
+    students, teams, supervisors, committees, studentTasks, announcements,
     addActivity, toggleStudentTask, toggleActivityBatch,
     setStudentTaskVisible, deleteStudentTask, deleteActivityBatch,
   } = useStore();
@@ -51,11 +51,24 @@ export default function ActivitiesPage() {
   const [studentId, setStudentId] = useState("");
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [committeeId, setCommitteeId] = useState("");
+  const [annId, setAnnId] = useState("");
   const [title, setTitle] = useState("");
   const [points, setPoints] = useState("");
   const [timeMode, setTimeMode] = useState<TimeMode>("open");
   const [dateVal, setDateVal] = useState("");
   const [dtVal, setDtVal] = useState("");
+
+  // الأنشطة المُعلَنة المتاحة للاختيار — مقيّدةٌ باللجنة المختارة، وإلّا بلجان المشرف،
+  // وإلّا (أمير/نائب) كلّها. اختيارُ نشاطٍ يملأ العنوانَ والنقاطَ (قابلةً للتعديل).
+  const availableAnns = useMemo(() => {
+    const active = announcements.filter(a => a.active);
+    if (committeeId) return active.filter(a => a.committeeId === committeeId);
+    if (myCommittees.length) {
+      const ids = new Set(myCommittees.map(c => c.id));
+      return active.filter(a => ids.has(a.committeeId));
+    }
+    return active;
+  }, [announcements, committeeId, myCommittees]);
 
   // اختيارٌ افتراضيٌّ للجنة عند توفّر لجنةٍ واحدةٍ للمشرف.
   useEffect(() => {
@@ -71,6 +84,13 @@ export default function ActivitiesPage() {
 
   function toggleTeam(id: string) {
     setTeamIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+
+  // اختيارُ نشاطٍ مُعلَن يملأ العنوانَ والنقاطَ تلقائياً (يبقيان قابلين للتعديل).
+  function pickAnnouncement(id: string) {
+    setAnnId(id);
+    const a = availableAnns.find(x => x.id === id);
+    if (a) { setTitle(a.title); setPoints(String(a.points)); }
   }
 
   function currentTarget(): ActivityTarget | null {
@@ -97,7 +117,7 @@ export default function ActivitiesPage() {
     // الخصمُ يُطبَّق فوراً — يتجاهل التوقيت.
     const expiresAt = kind === "deduction" ? undefined : currentExpiry();
     addActivity({ target, title: finalTitle, points: Number(points) || 0, kind, expiresAt });
-    setTitle(""); setPoints(""); setDateVal(""); setDtVal(""); setTimeMode("open");
+    setTitle(""); setPoints(""); setDateVal(""); setDtVal(""); setTimeMode("open"); setAnnId("");
   }
 
   // ── قائمة المرصود (مجمَّعة حسب batchId) — كلّ ما رُصِد يظهر هنا ──
@@ -202,10 +222,27 @@ export default function ActivitiesPage() {
           </p>
         )}
 
+        {/* اختيارٌ من الأنشطة المُعلَنة (يملأ العنوان والنقاط) — أو تُترَك للرصد اليدويّ */}
+        {availableAnns.length > 0 && (
+          <>
+            <div className="mb-1.5 text-[12px] tracking-[.12em] text-text-3">نشاطٌ مُعلَن (اختياريّ)</div>
+            <select
+              value={annId}
+              onChange={e => pickAnnouncement(e.target.value)}
+              className="mb-3 w-full rounded border border-line-strong bg-surface px-3 py-2.5 text-[14px] text-text"
+            >
+              <option value="">— نشاطٌ غير مُعلَن (رصدٌ يدويّ) —</option>
+              {availableAnns.map(a => (
+                <option key={a.id} value={a.id}>{a.title} · +{a.points}</option>
+              ))}
+            </select>
+          </>
+        )}
+
         {/* العنوان والنقاط */}
         <input
           value={title}
-          onChange={e => setTitle(e.target.value)}
+          onChange={e => { setTitle(e.target.value); setAnnId(""); }}
           placeholder="العنوان… (مثال: حضورٌ مبكّر · مشاركةٌ فعّالة · مخالفة)"
           className="mb-2 w-full rounded border border-line-strong bg-surface px-3 py-2 text-[13.5px]"
         />

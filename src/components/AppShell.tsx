@@ -23,6 +23,7 @@ const fullNav: NavGroup[] = [
       { href: "/committees",  label: "اللجان",       icon: <IconCommittee /> },
       { href: "/students",    label: "الشباب",        icon: <IconStudents /> },
       { href: "/supervisors", label: "المشرفون",     icon: <IconSupervisor /> },
+      { href: "/announcements", label: "لوحة الإعلانات", icon: <IconMegaphone /> },
       { href: "/tasks",       label: "رصد الأنشطة",    icon: <IconTasks /> },
     ],
   },
@@ -52,6 +53,7 @@ const supervisorNav: NavGroup[] = [
     items: [
       { href: "/my-team",    label: "أسرتي",           icon: <IconTeams /> },
       { href: "/my-committee", label: "لجنتي",         icon: <IconCommittee /> },
+      { href: "/announcements", label: "لوحة الإعلانات", icon: <IconMegaphone /> },
       { href: "/tasks",       label: "رصد الأنشطة",     icon: <IconTasks /> },
       { href: "/leaderboard", label: "قائمة الصدارة", icon: <IconTrophy /> },
     ],
@@ -101,7 +103,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     // ننتظر تحميل المتجر أوّلاً حتى لا نطرد المشرف قبل قراءة صلاحياته.
     if (session.role === "SUPERVISOR" && hydrated) {
       const allowedPrefixes = [
-        "/my-team", "/my-committee", "/tasks", "/leaderboard", "/settings/account", "/me",
+        "/my-team", "/my-committee", "/announcements", "/tasks", "/leaderboard", "/settings/account", "/me",
         ...(myPerms.includes("invoices")   ? ["/invoices"]   : []),
         ...(myPerms.includes("students")   ? ["/students"]   : []),
         ...(myPerms.includes("teams")      ? ["/teams"]      : []),
@@ -323,3 +325,4 @@ function IconUser()       { return <svg width="18" height="18" viewBox="0 0 24 2
 function IconImage()      { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.8"/><path d="M4 18l5-5 4 4 3-3 4 4"/></svg>; }
 function IconCrown()      { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M3 8l4 4 5-7 5 7 4-4-2 11H5L3 8z"/></svg>; }
 function IconTasks()      { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg>; }
+function IconMegaphone()  { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1zM14 8a4 4 0 0 1 0 8M18 5a8 8 0 0 1 0 14"/></svg>; }

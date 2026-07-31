@@ -571,3 +571,21 @@ alter table supervisors add column if not exists specialty      text;
 -- ═══════════════════════════════════════════════════════════════════════
 alter table students add column if not exists deleted_at timestamptz;
 create index if not exists idx_students_deleted_at on students (deleted_at);
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  لوحة إعلانات الأنشطة: يعلن مشرفُ اللجنة عن نشاطٍ وقيمتِه بالنقاط، فيراه
+--  الطلابُ في لوحةٍ (كلّ اللجان أو لجنةٍ محدّدة)، ويرصده المشرفُ لمن أنجزه
+--  عبر اختياره من المُعلَن (مع إمكان رصد نشاطٍ غير مُعلَن). يُدير المشرفُ إعلاناتِ
+--  لجانه فقط؛ والأمير/نائبه كلّ اللجان.
+--  ⚠️ شغّل هذا في Supabase.
+-- ═══════════════════════════════════════════════════════════════════════
+create table if not exists activity_announcements (
+  id           text primary key,
+  title        text not null,
+  points       integer not null default 0,    -- القيمة المُعلَنة (موجبة)
+  committee_id text not null references committees(id) on delete cascade,
+  created_by   text,                           -- مُعرِّف مَن أعلن (مشرف/أمير)
+  active       boolean not null default true,  -- إظهار/إخفاء من اللوحة
+  created_at   timestamptz not null default now()
+);
+create index if not exists idx_announcements_committee on activity_announcements (committee_id);

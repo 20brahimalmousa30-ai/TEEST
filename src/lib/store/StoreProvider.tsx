@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import type { Team, Student, Supervisor, Committee, CommitteeTask, StudentTask, ActivityKind, ActivityTarget, Invoice, PaymentStatus, OcrExtraction, ConditionsPolicy } from "@/lib/mock/types";
+import type { Team, Student, Supervisor, Committee, CommitteeTask, StudentTask, ActivityAnnouncement, ActivityKind, ActivityTarget, Invoice, PaymentStatus, OcrExtraction, ConditionsPolicy } from "@/lib/mock/types";
 import {
   loadAllData,
   dbAddTeam, dbUpdateTeam, dbDeleteTeam,
@@ -12,6 +12,7 @@ import {
   dbSetTeamBudget, dbSetCommitteeBudget,
   dbAddCommitteeTask, dbToggleCommitteeTask, dbDeleteCommitteeTask,
   dbAddActivity, dbToggleStudentTask, dbToggleActivityBatch, dbSetStudentTaskVisible, dbDeleteStudentTask, dbDeleteActivityBatch,
+  dbAddAnnouncement, dbUpdateAnnouncement, dbDeleteAnnouncement,
   dbSetDefaultFee,
   dbAddInvoice, dbAddInvoices, dbApproveInvoice, dbRejectInvoice, dbDeleteInvoice, dbRestoreInvoice, dbAnalyzeInvoice,
   dbToggleRegField, dbReorderRegField, dbAddRegField, dbUpdateRegField, dbRemoveRegField, dbSetRegOpen,
@@ -59,6 +60,8 @@ export type State = {
   committees:   Committee[];
   committeeTasks: CommitteeTask[];
   studentTasks: StudentTask[];
+  /** إعلاناتُ الأنشطة (لوحة الإعلانات) — يعلنها المشرف، ويراها الطلاب */
+  announcements: ActivityAnnouncement[];
   invoices:     Invoice[];
   regFields:    RegField[];
   regOpen:      boolean;
@@ -105,6 +108,7 @@ const initialState: State = {
   committees:   [],
   committeeTasks: [],
   studentTasks: [],
+  announcements: [],
   invoices:     [],
   regFields:    initialFields,
   regOpen:      true,
@@ -180,6 +184,10 @@ export type StoreActions = {
   setStudentTaskVisible(id: string, visible: boolean): void;
   deleteStudentTask(id: string): void;
   deleteActivityBatch(batchId: string): void;
+  // Activity announcements (لوحة الإعلانات) — supervisor announces for own committees
+  addAnnouncement(input: { title: string; points: number; committeeId: string }): void;
+  updateAnnouncement(id: string, patch: { title?: string; points?: number; active?: boolean }): void;
+  deleteAnnouncement(id: string): void;
   // Default fee (البند ٢) — Prince only; applies to all students
   setDefaultFee(amount: number): void;
   // Invoices
@@ -556,6 +564,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     deleteActivityBatch(batchId) {
       update(s => ({ studentTasks: s.studentTasks.filter(t => t.batchId !== batchId) }));
       persist(() => dbDeleteActivityBatch(batchId));
+    },
+
+    addAnnouncement({ title, points, committeeId }) {
+      const t = title.trim();
+      if (!t || !committeeId) return;
+      const pts = Math.max(0, Math.trunc(points || 0));
+      const row: ActivityAnnouncement = {
+        id: uid("ann"), title: t, points: pts, committeeId, active: true, createdAt: new Date().toISOString(),
+      };
+      update(s => ({ announcements: [row, ...s.announcements] }));
+      persist(() => dbAddAnnouncement({ title: t, points: pts, committeeId }));
+    },
+    updateAnnouncement(id, patch) {
+      update(s => ({ announcements: s.announcements.map(a => a.id === id ? { ...a, ...patch } : a) }));
+      persist(() => dbUpdateAnnouncement(id, patch));
+    },
+    deleteAnnouncement(id) {
+      update(s => ({ announcements: s.announcements.filter(a => a.id !== id) }));
+      persist(() => dbDeleteAnnouncement(id));
     },
     setDefaultFee(amount) {
       const fee = Math.max(0, Math.round(amount));

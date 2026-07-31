@@ -61,6 +61,18 @@ export type StudentTask = {
   createdAt: string;
 };
 
+/** إعلانُ نشاطٍ في «لوحة الإعلانات»: يعلنه مشرفُ اللجنة عن نشاطٍ وقيمتِه بالنقاط.
+ *  يراه الطلابُ في لوحةٍ (كلّ اللجان أو لجنةٍ محدّدة)، ويرصده المشرفُ لمن أنجزه. */
+export type ActivityAnnouncement = {
+  id: string;
+  title: string;
+  points: number;                    // القيمة المُعلَنة (موجبة)
+  committeeId: string;               // اللجنة التابع لها الإعلان
+  createdBy?: string;                // مُعرِّف مَن أعلن (مشرف/أمير)
+  active: boolean;                   // إظهار/إخفاء من اللوحة
+  createdAt: string;
+};
+
 export type Supervisor = {
   id: string;
   name: string;

@@ -18,7 +18,8 @@ import { studentNet, isActivityClosed } from "@/lib/points";
 export default function MePage() {
   const { session, ready } = useSession();
   const router = useRouter();
-  const { students, teams, studentTasks, submitReceipt, setStudentPhoto, hydrated, loadError } = useStore();
+  const { students, teams, committees, announcements, studentTasks, submitReceipt, setStudentPhoto, hydrated, loadError } = useStore();
+  const [boardCommittee, setBoardCommittee] = useState("all");
   const [payOpen, setPayOpen] = useState(false);
   const [photoErr, setPhotoErr] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -92,6 +93,13 @@ export default function MePage() {
   // أنشطتي: اللقطة الخاصّة بالمستفيد تُحمّل ما يخصّه (وما يخصّ أسرته) المرئيّ فقط.
   const myTasks = studentTasks.filter(t => t.studentId === student.id);
   const myPoints = studentNet(studentTasks, student.id);
+
+  // لوحة إعلانات الأنشطة: تُحمَّل الإعلاناتُ الفعّالة فقط. تصفيةٌ حسب اللجنة (كلّها/واحدة).
+  const committeeName = (id: string) => committees.find(c => c.id === id)?.name ?? "لجنة";
+  const boardCommittees = committees.filter(c => announcements.some(a => a.committeeId === c.id));
+  const boardItems = boardCommittee === "all"
+    ? announcements
+    : announcements.filter(a => a.committeeId === boardCommittee);
 
   return (
     <main className="min-h-screen">
@@ -240,6 +248,49 @@ export default function MePage() {
               </ul>
             )}
             <p className="mt-4 text-[12px] text-text-3">هذه أنشطتُك وخصوماتُك — يرصدها مشرفك أو الأمير، وتنعكس على رصيد نقاطك.</p>
+          </Card>
+        </section>
+
+        <section className="mt-6">
+          <Card title="لوحة إعلانات الأنشطة" action={<span className="text-[11.5px] text-text-3">{boardItems.length} نشاطاً</span>}>
+            {announcements.length === 0 ? (
+              <p className="py-4 text-center text-[13px] text-text-3">لا أنشطةَ معلَنةً بعد — تابِع لوحة الإعلانات لاحقاً.</p>
+            ) : (
+              <>
+                {/* تصفية: كلّ اللجان أو لجنةٌ محدّدة */}
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBoardCommittee("all")}
+                    className={`rounded border px-3 py-1.5 text-[12.5px] ${boardCommittee === "all" ? "border-accent bg-accent text-[#F4EEE2]" : "border-line-strong text-text-2 hover:border-accent"}`}
+                  >كل اللجان</button>
+                  {boardCommittees.map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setBoardCommittee(c.id)}
+                      className={`rounded border px-3 py-1.5 text-[12.5px] ${boardCommittee === c.id ? "border-accent bg-accent text-[#F4EEE2]" : "border-line-strong text-text-2 hover:border-accent"}`}
+                    >{c.name}</button>
+                  ))}
+                </div>
+                {boardItems.length === 0 ? (
+                  <p className="py-4 text-center text-[13px] text-text-3">لا أنشطةَ معلَنةً في هذه اللجنة.</p>
+                ) : (
+                  <ul className="grid gap-2 sm:grid-cols-2">
+                    {boardItems.map(a => (
+                      <li key={a.id} className="flex items-start justify-between gap-3 rounded border border-line px-3 py-2.5">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[13.5px] text-text">{a.title}</div>
+                          <div className="mt-1 text-[11.5px] text-text-3">{committeeName(a.committeeId)}</div>
+                        </div>
+                        <Pill variant="ok">+{a.points} نقطة</Pill>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+            <p className="mt-4 text-[12px] text-text-3">أنجِز نشاطاً من هذه الأنشطة وسيرصده لك مشرفُ اللجنة.</p>
           </Card>
         </section>
 
