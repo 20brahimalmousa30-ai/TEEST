@@ -586,6 +586,9 @@ create table if not exists activity_announcements (
   committee_id text not null references committees(id) on delete cascade,
   created_by   text,                           -- مُعرِّف مَن أعلن (مشرف/أمير)
   active       boolean not null default true,  -- إظهار/إخفاء من اللوحة
+  expires_at   timestamptz,                    -- موعدُ إغلاق النشاط — فارغٌ يعني «مفتوح»
   created_at   timestamptz not null default now()
 );
 create index if not exists idx_announcements_committee on activity_announcements (committee_id);
+-- ترحيلٌ لجدولٍ موجود مسبقاً (شغّله مرّةً في Supabase إن أنشأت الجدول قبل إضافة التوقيت):
+alter table activity_announcements add column if not exists expires_at timestamptz;

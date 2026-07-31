@@ -114,8 +114,9 @@ export default function ActivitiesPage() {
     // اسمُ لجنة المشرف يُسبَق العنوان أمام الطالب: «اسم اللجنة: النشاط…».
     const committee = myCommittees.find(c => c.id === committeeId);
     const finalTitle = committee ? `${committee.name}: ${title.trim()}` : title.trim();
-    // الخصمُ يُطبَّق فوراً — يتجاهل التوقيت.
-    const expiresAt = kind === "deduction" ? undefined : currentExpiry();
+    // الخصمُ يُطبَّق فوراً — يتجاهل التوقيت. والنشاطُ المُعلَن يُرصَد ويُحتسَب فوراً
+    // (توقيتُه محدَّدٌ في الإعلان ويظهر للطالب هناك)، فلا يُطلَب توقيتٌ عند الرصد.
+    const expiresAt = kind === "deduction" || annId ? undefined : currentExpiry();
     addActivity({ target, title: finalTitle, points: Number(points) || 0, kind, expiresAt });
     setTitle(""); setPoints(""); setDateVal(""); setDtVal(""); setTimeMode("open"); setAnnId("");
   }
@@ -258,36 +259,44 @@ export default function ActivitiesPage() {
           <span className="text-[12px] text-text-3">النقاط رقمٌ موجب — يُضيفها «رصد نشاط» أو يطرحها «رصد خصم».</span>
         </div>
 
-        {/* التوقيت (للنشاط) */}
-        <div className="mb-1.5 text-[12px] tracking-[.12em] text-text-3">توقيت النشاط (لا يخصّ الخصم)</div>
-        <div className="mb-2 flex flex-wrap gap-2">
-          {([["open", "مفتوح"], ["date", "بتاريخ"], ["countdown", "عدّاد تنازلي"]] as [TimeMode, string][]).map(([k, l]) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => setTimeMode(k)}
-              className={`rounded border px-3 py-1.5 text-[13px] ${timeMode === k ? "border-accent-warm bg-accent-warm/15 text-text" : "border-line-strong text-text-2 hover:border-accent"}`}
-            >{l}</button>
-          ))}
-        </div>
-        {timeMode === "date" && (
-          <input
-            type="date"
-            value={dateVal}
-            onChange={e => setDateVal(e.target.value)}
-            className="num mb-3 w-full rounded border border-line-strong bg-surface px-3 py-2 text-[13px] text-text-2"
-          />
-        )}
-        {timeMode === "countdown" && (
-          <input
-            type="datetime-local"
-            value={dtVal}
-            onChange={e => setDtVal(e.target.value)}
-            className="num mb-3 w-full rounded border border-line-strong bg-surface px-3 py-2 text-[13px] text-text-2"
-          />
-        )}
-        {timeMode === "open" && (
-          <p className="mb-3 text-[12px] text-text-3">مفتوح: تُحتسب نقاط النشاط فوراً دون موعدٍ للإغلاق.</p>
+        {/* التوقيت (للنشاط اليدويّ فقط) — النشاطُ المُعلَن توقيتُه من الإعلان */}
+        {annId ? (
+          <p className="mb-3 rounded border border-line bg-surface-alt/30 px-3 py-2 text-[12.5px] text-text-3">
+            نشاطٌ مُعلَن — يُرصَد ويُحتسَب فوراً، وتوقيتُه محدَّدٌ في الإعلان.
+          </p>
+        ) : (
+          <>
+            <div className="mb-1.5 text-[12px] tracking-[.12em] text-text-3">توقيت النشاط (لا يخصّ الخصم)</div>
+            <div className="mb-2 flex flex-wrap gap-2">
+              {([["open", "مفتوح"], ["date", "بتاريخ"], ["countdown", "عدّاد تنازلي"]] as [TimeMode, string][]).map(([k, l]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setTimeMode(k)}
+                  className={`rounded border px-3 py-1.5 text-[13px] ${timeMode === k ? "border-accent-warm bg-accent-warm/15 text-text" : "border-line-strong text-text-2 hover:border-accent"}`}
+                >{l}</button>
+              ))}
+            </div>
+            {timeMode === "date" && (
+              <input
+                type="date"
+                value={dateVal}
+                onChange={e => setDateVal(e.target.value)}
+                className="num mb-3 w-full rounded border border-line-strong bg-surface px-3 py-2 text-[13px] text-text-2"
+              />
+            )}
+            {timeMode === "countdown" && (
+              <input
+                type="datetime-local"
+                value={dtVal}
+                onChange={e => setDtVal(e.target.value)}
+                className="num mb-3 w-full rounded border border-line-strong bg-surface px-3 py-2 text-[13px] text-text-2"
+              />
+            )}
+            {timeMode === "open" && (
+              <p className="mb-3 text-[12px] text-text-3">مفتوح: تُحتسب نقاط النشاط فوراً دون موعدٍ للإغلاق.</p>
+            )}
+          </>
         )}
 
         <div className="flex flex-wrap gap-2 border-t border-line pt-3">

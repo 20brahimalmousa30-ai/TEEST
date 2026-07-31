@@ -13,7 +13,7 @@ import { useStore } from "@/lib/store/StoreProvider";
 import { LoadErrorBanner } from "@/components/LoadErrorBanner";
 import { VersionWatcher } from "@/components/VersionWatcher";
 import { sar } from "@/lib/format";
-import { studentNet, isActivityClosed } from "@/lib/points";
+import { studentNet, isActivityClosed, formatCountdown } from "@/lib/points";
 
 export default function MePage() {
   const { session, ready } = useSession();
@@ -281,7 +281,12 @@ export default function MePage() {
                       <li key={a.id} className="flex items-start justify-between gap-3 rounded border border-line px-3 py-2.5">
                         <div className="min-w-0 flex-1">
                           <div className="text-[13.5px] text-text">{a.title}</div>
-                          <div className="mt-1 text-[11.5px] text-text-3">{committeeName(a.committeeId)}</div>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-3 text-[11.5px] text-text-3">
+                            <span>{committeeName(a.committeeId)}</span>
+                            {a.expiresAt
+                              ? <span className="num text-accent-warm-2">{formatCountdown(a.expiresAt)}</span>
+                              : <span>مفتوح</span>}
+                          </div>
                         </div>
                         <Pill variant="ok">+{a.points} نقطة</Pill>
                       </li>

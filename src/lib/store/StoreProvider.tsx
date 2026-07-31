@@ -185,7 +185,7 @@ export type StoreActions = {
   deleteStudentTask(id: string): void;
   deleteActivityBatch(batchId: string): void;
   // Activity announcements (لوحة الإعلانات) — supervisor announces for own committees
-  addAnnouncement(input: { title: string; points: number; committeeId: string }): void;
+  addAnnouncement(input: { title: string; points: number; committeeId: string; expiresAt?: string }): void;
   updateAnnouncement(id: string, patch: { title?: string; points?: number; active?: boolean }): void;
   deleteAnnouncement(id: string): void;
   // Default fee (البند ٢) — Prince only; applies to all students
@@ -566,15 +566,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       persist(() => dbDeleteActivityBatch(batchId));
     },
 
-    addAnnouncement({ title, points, committeeId }) {
+    addAnnouncement({ title, points, committeeId, expiresAt }) {
       const t = title.trim();
       if (!t || !committeeId) return;
       const pts = Math.max(0, Math.trunc(points || 0));
       const row: ActivityAnnouncement = {
-        id: uid("ann"), title: t, points: pts, committeeId, active: true, createdAt: new Date().toISOString(),
+        id: uid("ann"), title: t, points: pts, committeeId, active: true, expiresAt, createdAt: new Date().toISOString(),
       };
       update(s => ({ announcements: [row, ...s.announcements] }));
-      persist(() => dbAddAnnouncement({ title: t, points: pts, committeeId }));
+      persist(() => dbAddAnnouncement({ title: t, points: pts, committeeId, expiresAt }));
     },
     updateAnnouncement(id, patch) {
       update(s => ({ announcements: s.announcements.map(a => a.id === id ? { ...a, ...patch } : a) }));

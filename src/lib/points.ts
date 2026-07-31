@@ -26,3 +26,16 @@ export function totalNet(tasks: StudentTask[]): number {
 export function isActivityClosed(t: StudentTask, now = Date.now()): boolean {
   return !t.done && !!t.expiresAt && Date.parse(t.expiresAt) <= now;
 }
+
+/** صياغةُ الوقت المتبقّي حتى موعدٍ ما بالعربيّة (أو «انتهى»). */
+export function formatCountdown(iso: string, now = Date.now()): string {
+  const ms = Date.parse(iso) - now;
+  if (ms <= 0) return "انتهى";
+  const mins = Math.floor(ms / 60000);
+  const days = Math.floor(mins / 1440);
+  const hours = Math.floor((mins % 1440) / 60);
+  const m = mins % 60;
+  if (days > 0) return `يتبقّى ${days} يوم ${hours} س`;
+  if (hours > 0) return `يتبقّى ${hours} س ${m} د`;
+  return `يتبقّى ${m} د`;
+}

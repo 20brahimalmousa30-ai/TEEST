@@ -70,6 +70,7 @@ export type ActivityAnnouncement = {
   committeeId: string;               // اللجنة التابع لها الإعلان
   createdBy?: string;                // مُعرِّف مَن أعلن (مشرف/أمير)
   active: boolean;                   // إظهار/إخفاء من اللوحة
+  expiresAt?: string;                // موعدُ إغلاق النشاط (تاريخ/عدّاد) — غيابُه يعني «مفتوح»
   createdAt: string;
 };
 

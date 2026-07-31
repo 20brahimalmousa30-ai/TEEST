@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
 import { useStore } from "@/lib/store/StoreProvider";
 import { useSession } from "@/lib/auth/session";
+import { formatCountdown } from "@/lib/points";
+
+type TimeMode = "open" | "date" | "countdown";
 
 /**
  * «لوحة الإعلانات»: يعلن المشرفُ عن أنشطةٍ في لجانه — كلُّ نشاطٍ بقيمتِه بالنقاط.
@@ -32,6 +35,16 @@ export default function AnnouncementsPage() {
   const [committeeId, setCommitteeId] = useState("");
   const [title, setTitle] = useState("");
   const [points, setPoints] = useState("");
+  const [timeMode, setTimeMode] = useState<TimeMode>("open");
+  const [dateVal, setDateVal] = useState("");
+  const [dtVal, setDtVal] = useState("");
+
+  // موعدُ الإغلاق المُعلَن — يظهر للشباب في لوحتهم؛ غيابُه يعني «نشاطٌ مفتوح».
+  function currentExpiry(): string | undefined {
+    if (timeMode === "date") return dateVal ? new Date(`${dateVal}T23:59:59`).toISOString() : undefined;
+    if (timeMode === "countdown") return dtVal ? new Date(dtVal).toISOString() : undefined;
+    return undefined;
+  }
 
   // اختيارٌ افتراضيّ عند توفّر لجنةٍ واحدة.
   useEffect(() => {
@@ -42,8 +55,8 @@ export default function AnnouncementsPage() {
 
   function submit() {
     if (!canSubmit) return;
-    addAnnouncement({ title: title.trim(), points: Number(points) || 0, committeeId });
-    setTitle(""); setPoints("");
+    addAnnouncement({ title: title.trim(), points: Number(points) || 0, committeeId, expiresAt: currentExpiry() });
+    setTitle(""); setPoints(""); setDateVal(""); setDtVal(""); setTimeMode("open");
   }
 
   // إعلاناتُ اللجان التي يُديرها المُستخدم فقط، أحدثها أوّلاً.
@@ -104,6 +117,38 @@ export default function AnnouncementsPage() {
             <span className="text-[12px] text-text-3">قيمةُ النشاط بالنقاط — تُملأ تلقائياً عند الرصد ويمكن تعديلها.</span>
           </div>
 
+          {/* موعدُ الإغلاق — يُحدَّد هنا مرّةً، ويسري تلقائياً عند الرصد دون إعادة إدخال */}
+          <div className="mb-1.5 text-[12px] tracking-[.12em] text-text-3">موعد النشاط</div>
+          <div className="mb-2 flex flex-wrap gap-2">
+            {([["open", "مفتوح"], ["date", "بتاريخ"], ["countdown", "عدّاد تنازلي"]] as [TimeMode, string][]).map(([k, l]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setTimeMode(k)}
+                className={`rounded border px-3 py-1.5 text-[13px] ${timeMode === k ? "border-accent-warm bg-accent-warm/15 text-text" : "border-line-strong text-text-2 hover:border-accent"}`}
+              >{l}</button>
+            ))}
+          </div>
+          {timeMode === "date" && (
+            <input
+              type="date"
+              value={dateVal}
+              onChange={e => setDateVal(e.target.value)}
+              className="num mb-3 w-full rounded border border-line-strong bg-surface px-3 py-2 text-[13px] text-text-2"
+            />
+          )}
+          {timeMode === "countdown" && (
+            <input
+              type="datetime-local"
+              value={dtVal}
+              onChange={e => setDtVal(e.target.value)}
+              className="num mb-3 w-full rounded border border-line-strong bg-surface px-3 py-2 text-[13px] text-text-2"
+            />
+          )}
+          {timeMode === "open" && (
+            <p className="mb-3 text-[12px] text-text-3">مفتوح: يبقى النشاطُ متاحاً بلا موعدٍ للإغلاق.</p>
+          )}
+
           <div className="border-t border-line pt-3">
             <Button type="button" variant="primary" disabled={!canSubmit} onClick={submit}>＋ إعلان نشاط</Button>
           </div>
@@ -125,7 +170,12 @@ export default function AnnouncementsPage() {
                         <Pill variant={a.active ? "ok" : "info"}>+{a.points} نقطة</Pill>
                         {!a.active && <span className="text-[11px] text-text-3">مخفيّ</span>}
                       </div>
-                      <div className="mt-1 text-[11.5px] text-text-3">{committeeName(a.committeeId)}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 text-[11.5px] text-text-3">
+                        <span>{committeeName(a.committeeId)}</span>
+                        {a.expiresAt
+                          ? <span className="num text-accent-warm-2">{formatCountdown(a.expiresAt)}</span>
+                          : <span>مفتوح</span>}
+                      </div>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1.5">
                       <button

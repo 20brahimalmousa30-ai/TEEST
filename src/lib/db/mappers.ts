@@ -106,6 +106,7 @@ export const rowToActivityAnnouncement = (r: any): ActivityAnnouncement => ({
   committeeId: r.committee_id,
   createdBy: r.created_by ?? undefined,
   active: r.active ?? true,
+  expiresAt: r.expires_at ?? undefined,
   createdAt: r.created_at ?? "",
 });
 

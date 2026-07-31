@@ -854,7 +854,7 @@ async function requireAnnouncementAccess(id: string): Promise<DbSession> {
   throw new Error("غير مصرّح.");
 }
 
-export async function dbAddAnnouncement(input: { title: string; points: number; committeeId: string }) {
+export async function dbAddAnnouncement(input: { title: string; points: number; committeeId: string; expiresAt?: string }) {
   const s = await requireCommitteeAccess(input.committeeId);
   const title = input.title.trim();
   if (!title || !input.committeeId) return;
@@ -862,6 +862,7 @@ export async function dbAddAnnouncement(input: { title: string; points: number; 
   await getSupabase().from("activity_announcements").insert({
     id: uid("ann"), title, points: pts, committee_id: input.committeeId,
     created_by: s.supervisorId ?? s.phone ?? null, active: true,
+    expires_at: input.expiresAt ?? null,
   });
 }
 
