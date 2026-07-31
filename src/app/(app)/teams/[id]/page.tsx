@@ -15,6 +15,7 @@ import { useSession } from "@/lib/auth/session";
 import { BudgetEditor } from "@/components/BudgetEditor";
 import { exportXlsx } from "@/lib/xlsx";
 import { fileToDataUrl, extractDominantColor } from "@/lib/image";
+import { teamLabel } from "@/lib/format";
 import type { Student } from "@/lib/mock/types";
 
 const grades = ["الأول ثانوي", "الثاني ثانوي", "الثالث ثانوي"];
@@ -35,7 +36,7 @@ export default function TeamDetail() {
   const [form, setForm] = useState({ name: "", phone: "", grade: grades[0], section: sections[0] as (typeof sections)[number] });
 
   const team = teams.find(t => t.id === params.id);
-  useEffect(() => { document.title = team ? `أسرة ${team.name} — معالي محافظة بلّسمر` : "الأسر"; }, [team]);
+  useEffect(() => { document.title = team ? `${teamLabel(team.name)} — معالي محافظة بلّسمر` : "الأسر"; }, [team]);
 
   if (!team) {
     return (
@@ -82,8 +83,8 @@ export default function TeamDetail() {
       s.paymentStatus === "PAID" ? "مسدَّد" : s.paymentStatus === "PARTIAL" ? "جزئي" : "معلّق"]);
     await exportXlsx({
       filename: `أسرة_${team!.name}_${roster.length}_عضو`,
-      sheetName: `أسرة ${team!.name}`,
-      title: `أسرة ${team!.name} — معالي محافظة بلّسمر`,
+      sheetName: teamLabel(team!.name),
+      title: `${teamLabel(team!.name)} — معالي محافظة بلّسمر`,
       subtitle: `${roster.length} عضو`,
       columns: [
         { header: "الاسم", width: 26, align: "right" },
@@ -125,8 +126,8 @@ export default function TeamDetail() {
     <div className="page-shell">
       <PageHeader
         eyebrow="تفاصيلُ الأسرة"
-        crumbs={[{ href: "/teams", label: "الأسر" }, { label: `أسرة ${team.name}` }]}
-        title={`أسرة ${team.name}`}
+        crumbs={[{ href: "/teams", label: "الأسر" }, { label: teamLabel(team.name) }]}
+        title={teamLabel(team.name)}
         subtitle={team.tagline}
         action={<TeamBadge letters={team.badge} color={team.color} size={44} image={team.imageDataUrl} />}
       />
@@ -234,7 +235,7 @@ export default function TeamDetail() {
       <Modal
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        title={`إضافة عضوٍ إلى أسرة ${team.name}`}
+        title={`إضافة عضوٍ إلى ${teamLabel(team.name)}`}
         footer={
           <>
             <Button variant="outline" type="button" onClick={() => setAddOpen(false)}>إلغاء</Button>
@@ -266,7 +267,7 @@ export default function TeamDetail() {
         open={delOpen}
         onClose={() => setDelOpen(false)}
         onConfirm={() => { deleteTeam(team!.id); router.push("/teams"); }}
-        title={`إلغاء أسرة ${team.name}؟`}
+        title={`إلغاء ${teamLabel(team.name)}؟`}
         message={`ستُحذف الأسرة مع كلّ أعضائها (${roster.length} طالباً). هذا الإجراء لا يمكن التراجع عنه.`}
         confirmLabel="نعم، احذف الأسرة"
         danger

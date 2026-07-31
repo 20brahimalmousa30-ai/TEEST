@@ -12,6 +12,7 @@ import { Modal } from "@/components/ui/Modal";
 import { useSession } from "@/lib/auth/session";
 import { useStore } from "@/lib/store/StoreProvider";
 import { exportXlsx } from "@/lib/xlsx";
+import { teamLabel } from "@/lib/format";
 
 const dayLabels = ["اليوم ١", "اليوم ٢", "اليوم ٣", "اليوم ٤", "اليوم ٥", "اليوم ٦", "اليوم ٧", "اليوم ٨"];
 
@@ -55,7 +56,7 @@ export default function MyTeamPage() {
     await exportXlsx({
       filename: `أسرتي_${team.name}`,
       sheetName: "أسرتي",
-      title: `أسرة ${team.name} — معالي محافظة بلّسمر`,
+      title: `${teamLabel(team.name)} — معالي محافظة بلّسمر`,
       subtitle: `${roster.length} عضو`,
       columns: [
         { header: "الاسم", width: 26, align: "right" },
@@ -68,7 +69,7 @@ export default function MyTeamPage() {
     });
   }
   function whatsappParents() {
-    const msg = encodeURIComponent(`السلام عليكم أولياء أمور أسرة ${team.name} — تذكير باللقاء المسائي غداً في الساعة السابعة.`);
+    const msg = encodeURIComponent(`السلام عليكم أولياء أمور ${teamLabel(team.name)} — تذكير باللقاء المسائي غداً في الساعة السابعة.`);
     window.open(`https://wa.me/?text=${msg}`, "_blank", "noopener");
   }
 
@@ -76,7 +77,7 @@ export default function MyTeamPage() {
     <div className="page-shell">
       <PageHeader
         eyebrow="أسرتي · نطاقُ المشرف"
-        title={`أسرة ${team.name}`}
+        title={teamLabel(team.name)}
         subtitle="أنت تشرف على هذه الأسرة. لا ترى بيانات الأسر الأخرى."
         action={<TeamBadge letters={team.badge} color={team.color} size={44} />}
       />
@@ -149,7 +150,7 @@ export default function MyTeamPage() {
       <Modal
         open={attOpen}
         onClose={() => setAttOpen(false)}
-        title={`تسجيل حضور أسرة ${team.name}`}
+        title={`تسجيل حضور ${teamLabel(team.name)}`}
         subtitle="اضغط على أيّ عضوٍ لتبديل حالة حضوره في اليوم المُختار."
         size="lg"
         footer={<Button onClick={() => setAttOpen(false)}>تم</Button>}

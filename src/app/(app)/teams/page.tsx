@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Field";
 import { useStore } from "@/lib/store/StoreProvider";
+import { teamLabel } from "@/lib/format";
 
 const swatches = ["#1E4635", "#6B7A3E", "#8C5A3C", "#4E6B7A", "#7A5B2E", "#3F5B4E", "#5A4A7A", "#6B4A3E", "#2E5A5A", "#4A6B2E", "#7A4A5A", "#5A6B3E"];
 
@@ -54,7 +55,7 @@ export default function TeamsPage() {
               <div className="flex items-start gap-3">
                 <TeamBadge letters={t.badge} color={t.color} size={44} image={t.imageDataUrl} />
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-[16.5px] font-semibold text-text group-hover:text-accent">أسرة {t.name}</h3>
+                  <h3 className="text-[16.5px] font-semibold text-text group-hover:text-accent">{teamLabel(t.name)}</h3>
                   <p className="mt-0.5 text-[12px] text-text-3">مشرف: {sup?.name ?? "—"}</p>
                 </div>
                 <span className="num text-[13.5px] text-accent-warm-2 whitespace-nowrap">{t.points} نقطة</span>

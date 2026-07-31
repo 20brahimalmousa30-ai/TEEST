@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { useStore } from "@/lib/store/StoreProvider";
 import { useSession } from "@/lib/auth/session";
 import { printPage } from "@/lib/download";
-import { sar } from "@/lib/format";
+import { sar, teamLabel } from "@/lib/format";
 import type { Invoice } from "@/lib/mock/types";
 import { CONDITION_LABELS } from "@/lib/ai/conditions";
 
@@ -43,7 +43,7 @@ export default function InvoiceDetail() {
   const net = inv.amount - vat;
   const scope = inv.scope;
   const scopeLabel = scope.kind === "event" ? "الفعاليّة كاملةً"
-    : scope.kind === "team" ? `أسرة ${teams.find(t => t.id === scope.teamId)?.name ?? "—"}`
+    : scope.kind === "team" ? teamLabel(teams.find(t => t.id === scope.teamId)?.name)
     : committees.find(c => c.id === scope.committeeId)?.name ?? "—";
   const uploader = inv.uploadedBy ? supervisors.find(s => s.id === inv.uploadedBy)?.name : null;
   const sp = statusPill(inv.status);
@@ -54,7 +54,7 @@ export default function InvoiceDetail() {
       const t = teams.find(x => x.id === scope.teamId);
       if (!t) return null;
       const spent = invoices.filter(i => (i.status === "approved" || i.status === "paid") && i.scope.kind === "team" && i.scope.teamId === t.id && i.id !== inv.id).reduce((s, i) => s + i.amount, 0);
-      return { label: `أسرة ${t.name}`, budget: t.budget ?? 0, spent };
+      return { label: teamLabel(t.name), budget: t.budget ?? 0, spent };
     }
     if (scope.kind === "committee") {
       const c = committees.find(x => x.id === scope.committeeId);

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { TeamBadge } from "@/components/ui/TeamBadge";
 import { useStore } from "@/lib/store/StoreProvider";
+import { teamLabel } from "@/lib/format";
 
 export default function LeaderboardPage() {
   useEffect(() => { document.title = "قائمة الصدارة — معالي محافظة بلّسمر"; }, []);
@@ -36,7 +37,7 @@ export default function LeaderboardPage() {
                   <span className={`lat text-center text-[17px] italic ${i === 0 ? "text-accent-warm font-semibold" : "text-text-3"}`}>{i + 1}</span>
                   <TeamBadge letters={t.badge} color={t.color} size={38} />
                   <div className="min-w-0">
-                    <Link href={`/teams/${t.id}`} className="text-[14.5px] font-medium text-text hover:text-accent">أسرة {t.name}</Link>
+                    <Link href={`/teams/${t.id}`} className="text-[14.5px] font-medium text-text hover:text-accent">{teamLabel(t.name)}</Link>
                     <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-alt/40">
                       <div className="h-full" style={{ width: `${pct}%`, background: t.color }} />
                     </div>
@@ -55,7 +56,7 @@ export default function LeaderboardPage() {
                 <span className={`lat text-center text-[14px] italic ${i < 3 ? "text-accent-warm font-semibold" : "text-text-3"}`}>{i + 1}</span>
                 <div>
                   <Link href={`/students/${s.id}`} className="text-[13.5px] text-text hover:text-accent">{s.name}</Link>
-                  <div className="text-[11px] text-text-3">{s.section} · أسرة {teams.find(t => t.id === s.teamId)?.name ?? "—"}</div>
+                  <div className="text-[11px] text-text-3">{s.section} · {teamLabel(teams.find(t => t.id === s.teamId)?.name)}</div>
                 </div>
                 <span className="num text-[13.5px] text-text">{s.points}<span className="ms-1 text-[10px] text-text-3">pt</span></span>
               </li>
@@ -75,7 +76,7 @@ export default function LeaderboardPage() {
                 <span className={`lat text-[32px] italic ${i === 0 ? "text-accent-warm font-semibold" : "text-text-3"}`}>{i + 1}</span>
                 <TeamBadge letters={t.badge} color={t.color} size={56} />
                 <div className="flex-1">
-                  <div className="text-[20px] font-semibold text-text" style={{ fontFamily: "var(--font-messiri), var(--font-cairo), serif" }}>أسرة {t.name}</div>
+                  <div className="text-[20px] font-semibold text-text" style={{ fontFamily: "var(--font-messiri), var(--font-cairo), serif" }}>{teamLabel(t.name)}</div>
                   <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-surface-alt/40">
                     <div className="h-full" style={{ width: `${pct}%`, background: t.color }} />
                   </div>

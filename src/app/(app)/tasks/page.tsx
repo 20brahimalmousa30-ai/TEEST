@@ -7,6 +7,7 @@ import { Pill } from "@/components/ui/Pill";
 import { useStore } from "@/lib/store/StoreProvider";
 import { useSession } from "@/lib/auth/session";
 import { isActivityClosed } from "@/lib/points";
+import { teamLabel } from "@/lib/format";
 import type { StudentTask, ActivityTarget } from "@/lib/mock/types";
 
 /**
@@ -14,6 +15,8 @@ import type { StudentTask, ActivityTarget } from "@/lib/mock/types";
  * أو خصماً (نقاطٌ سالبة) — لطالبٍ بعينه، أو لأسرةٍ/أُسَر، أو لكلّ الطلاب.
  * التوقيت: مفتوح (يُحتسب فوراً) · بتاريخ · عدّاد تنازلي (يُغلق تلقائياً عند انتهائه).
  * يرى الطالبُ ما يخصّه (وما يخصّ أسرته) في صفحته — ولا يرصد لنفسه.
+ * المشرف يرصد لكلّ الطلاب المسجَّلين (من أسرته أو خارجها)؛ ويُسبَق النشاطُ باسم لجنته
+ * أمام الطالب بصيغة «اسم اللجنة: النشاط…».
  */
 type ScopeKind = "student" | "teams" | "all";
 type TimeMode = "open" | "date" | "countdown";
@@ -22,37 +25,42 @@ export default function ActivitiesPage() {
   useEffect(() => { document.title = "رصد الأنشطة — معالي محافظة بلّسمر"; }, []);
   const { session } = useSession();
   const {
-    students, teams, supervisors, studentTasks,
+    students, teams, supervisors, committees, studentTasks,
     addActivity, toggleStudentTask, toggleActivityBatch,
     setStudentTaskVisible, deleteStudentTask, deleteActivityBatch,
   } = useStore();
 
-  // نطاقُ المشرف: أُسَره فقط؛ الأمير/نائبه يرى الجميع.
+  // المشرفُ يرصد لكلّ الطلاب المسجَّلين — لا تقييد بأُسَره؛ والأمير/نائبه كذلك.
   const mySup = session?.role === "SUPERVISOR"
     ? supervisors.find(s => s.id === session.supervisorId)
     : undefined;
-  const myTeamIds = mySup?.teamIds ?? null; // null = بلا تقييد (أمير)
+  // لجان المشرف — يُسبَق النشاطُ باسمها أمام الطالب.
+  const myCommittees = useMemo(
+    () => mySup ? committees.filter(c => mySup.committeeIds.includes(c.id)) : [],
+    [mySup, committees],
+  );
 
   const approved = useMemo(
-    () => students.filter(s => (s.approvalStatus ?? "APPROVED") === "APPROVED"
-      && (!myTeamIds || myTeamIds.includes(s.teamId))),
-    [students, myTeamIds],
+    () => students.filter(s => (s.approvalStatus ?? "APPROVED") === "APPROVED"),
+    [students],
   );
-  const scopeTeams = useMemo(
-    () => teams.filter(t => !myTeamIds || myTeamIds.includes(t.id)),
-    [teams, myTeamIds],
-  );
-  const myStudentIds = useMemo(() => new Set(approved.map(s => s.id)), [approved]);
+  const scopeTeams = teams;
 
   // ── نموذج الرصد ──
   const [scope, setScope] = useState<ScopeKind>("student");
   const [studentId, setStudentId] = useState("");
   const [teamIds, setTeamIds] = useState<string[]>([]);
+  const [committeeId, setCommitteeId] = useState("");
   const [title, setTitle] = useState("");
   const [points, setPoints] = useState("");
   const [timeMode, setTimeMode] = useState<TimeMode>("open");
   const [dateVal, setDateVal] = useState("");
   const [dtVal, setDtVal] = useState("");
+
+  // اختيارٌ افتراضيٌّ للجنة عند توفّر لجنةٍ واحدةٍ للمشرف.
+  useEffect(() => {
+    if (myCommittees.length === 1) setCommitteeId(myCommittees[0].id);
+  }, [myCommittees]);
 
   // مؤقّتٌ خفيف لتحديث العدّادات التنازليّة في القائمة.
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -83,15 +91,18 @@ export default function ActivitiesPage() {
   function record(kind: "activity" | "deduction") {
     const target = currentTarget();
     if (!target || !title.trim() || !points.trim()) return;
+    // اسمُ لجنة المشرف يُسبَق العنوان أمام الطالب: «اسم اللجنة: النشاط…».
+    const committee = myCommittees.find(c => c.id === committeeId);
+    const finalTitle = committee ? `${committee.name}: ${title.trim()}` : title.trim();
     // الخصمُ يُطبَّق فوراً — يتجاهل التوقيت.
     const expiresAt = kind === "deduction" ? undefined : currentExpiry();
-    addActivity({ target, title: title.trim(), points: Number(points) || 0, kind, expiresAt });
+    addActivity({ target, title: finalTitle, points: Number(points) || 0, kind, expiresAt });
     setTitle(""); setPoints(""); setDateVal(""); setDtVal(""); setTimeMode("open");
   }
 
-  // ── قائمة المرصود (مجمَّعة حسب batchId) — مقيَّدةٌ بطلاب نطاق المشرف ──
+  // ── قائمة المرصود (مجمَّعة حسب batchId) — كلّ ما رُصِد يظهر هنا ──
   const groups = useMemo(() => {
-    const scoped = studentTasks.filter(t => !myTeamIds || myStudentIds.has(t.studentId));
+    const scoped = studentTasks;
     const byKey = new Map<string, StudentTask[]>();
     for (const t of scoped) {
       const key = t.batchId ?? t.id;
@@ -114,7 +125,7 @@ export default function ActivitiesPage() {
         };
       })
       .sort((a, b) => (b.createdAt < a.createdAt ? -1 : 1));
-  }, [studentTasks, myStudentIds, myTeamIds]);
+  }, [studentTasks]);
 
   return (
     <div className="page-shell">
@@ -159,7 +170,7 @@ export default function ActivitiesPage() {
                 type="button"
                 onClick={() => toggleTeam(t.id)}
                 className={`rounded border px-3 py-1.5 text-[13px] ${teamIds.includes(t.id) ? "border-accent bg-accent text-[#F4EEE2]" : "border-line-strong text-text-2 hover:border-accent"}`}
-              >أسرة {t.name}</button>
+              >{teamLabel(t.name)}</button>
             ))}
             {scopeTeams.length === 0 && <span className="text-[13px] text-text-3">لا أُسَر متاحة.</span>}
           </div>
@@ -167,7 +178,27 @@ export default function ActivitiesPage() {
 
         {scope === "all" && (
           <p className="mb-3 rounded border border-line bg-surface-alt/30 px-3 py-2 text-[12.5px] text-text-3">
-            سيُطبَّق على {approved.length} شاباً معتمداً{myTeamIds ? " ضمن نطاقك" : ""}.
+            سيُطبَّق على {approved.length} شاباً معتمداً — من كلّ الأسر.
+          </p>
+        )}
+
+        {/* لجنة المشرف — يظهر اسمها أمام الطالب قبل النشاط */}
+        {myCommittees.length > 1 && (
+          <>
+            <div className="mb-1.5 text-[12px] tracking-[.12em] text-text-3">اللجنة (تظهر أمام الطالب)</div>
+            <select
+              value={committeeId}
+              onChange={e => setCommitteeId(e.target.value)}
+              className="mb-3 w-full rounded border border-line-strong bg-surface px-3 py-2.5 text-[14px] text-text"
+            >
+              <option value="">— بلا اسم لجنة —</option>
+              {myCommittees.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </>
+        )}
+        {myCommittees.length === 1 && (
+          <p className="mb-3 rounded border border-line bg-surface-alt/30 px-3 py-2 text-[12.5px] text-text-3">
+            سيظهر النشاطُ أمام الطالب باسم لجنتك: <span className="text-text">{myCommittees[0].name}</span>
           </p>
         )}
 

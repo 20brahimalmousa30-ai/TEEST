@@ -13,6 +13,7 @@ import { SUPERVISOR_PERMISSIONS } from "@/lib/mock/types";
 import { parseCSV } from "@/lib/spreadsheet";
 import { exportXlsx } from "@/lib/xlsx";
 import { fileToDataUrl } from "@/lib/image";
+import { teamLabel } from "@/lib/format";
 
 const empty = { name: "", phone: "", email: "", nationalId: "", specialty: "", photoDataUrl: "", teamIds: [] as string[], committeeIds: [] as string[], permissions: [] as string[] };
 
@@ -191,7 +192,7 @@ export default function SupervisorsPage() {
                 </td>
                 <td className="px-5 py-3">
                   {sup.teamIds.length > 0
-                    ? <div className="flex flex-wrap gap-1.5">{sup.teamIds.map(tid => { const t = teams.find(x => x.id === tid); return t && <Pill key={tid} variant="info">أسرة {t.name}</Pill>; })}</div>
+                    ? <div className="flex flex-wrap gap-1.5">{sup.teamIds.map(tid => { const t = teams.find(x => x.id === tid); return t && <Pill key={tid} variant="info">{teamLabel(t.name)}</Pill>; })}</div>
                     : <span className="text-text-3">—</span>}
                 </td>
                 <td className="px-5 py-3">
@@ -270,7 +271,7 @@ export default function SupervisorsPage() {
               {teams.map(t => (
                 <label key={t.id} className="flex cursor-pointer items-center gap-2">
                   <input type="checkbox" checked={form.teamIds.includes(t.id)} onChange={() => toggleFrom("teamIds", t.id)} className="accent-[color:var(--accent)]" />
-                  <span className="text-text-2">أسرة {t.name}</span>
+                  <span className="text-text-2">{teamLabel(t.name)}</span>
                 </label>
               ))}
             </div>

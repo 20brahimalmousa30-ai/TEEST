@@ -17,6 +17,13 @@ export const sar = (n: number) => latnNumber.format(n);
 export const arDate = (iso?: string) =>
   iso ? latnDate.format(new Date(iso)) : "—";
 
+/** يُنسِّق اسم الأسرة بإضافة كلمة «أسرة» مرّةً واحدة فقط.
+ *  بعض الأسماء المخزَّنة تبدأ أصلاً بـ«أسرة» فيمنع هذا التكرار «أسرة أسرة». */
+export const teamLabel = (name?: string): string => {
+  const n = (name ?? "—").trim();
+  return n.startsWith("أسرة") ? n : `أسرة ${n}`;
+};
+
 /** تحويل الأرقام العربيّة (٠-٩) إلى الأرقام الإنجليزيّة (0-9).
  *  يُستخدم في حقول الإدخال (رقم الجوّال، رقم الهوية) لضمان عدم قَبول الأرقام العربيّة. */
 export const arabicToEnglishNumerals = (text: string): string => {

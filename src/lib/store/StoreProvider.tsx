@@ -23,6 +23,7 @@ import {
 import { motivations as DEFAULT_MOTIVATIONS, tickerPhrases as DEFAULT_TICKER } from "@/lib/motivations";
 import type { PageMarquee, PageMarqueeMap } from "@/lib/pageMarquees";
 import { evaluateConditions, passesPolicy } from "@/lib/ai/conditions";
+import { teamLabel } from "@/lib/format";
 
 export type RegField = {
   key: string; label: string; type: string; required: boolean; active: boolean; desc: string;
@@ -507,7 +508,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       } else if (target.kind === "teams") {
         const set = new Set(target.teamIds);
         ids = approved.filter(x => set.has(x.teamId)).map(x => x.id);
-        scopeLabel = st.teams.filter(tm => set.has(tm.id)).map(tm => `أسرة ${tm.name}`).join("، ");
+        scopeLabel = st.teams.filter(tm => set.has(tm.id)).map(tm => teamLabel(tm.name)).join("، ");
       } else {
         ids = approved.map(x => x.id);
         scopeLabel = "كل الطلاب";

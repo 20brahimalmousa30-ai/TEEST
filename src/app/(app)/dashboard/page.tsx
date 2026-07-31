@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { TeamBadge } from "@/components/ui/TeamBadge";
 import { useStore } from "@/lib/store/StoreProvider";
 import { useSession } from "@/lib/auth/session";
-import { sar } from "@/lib/format";
+import { sar, teamLabel } from "@/lib/format";
 
 export default function DashboardPage() {
   useEffect(() => { document.title = "لوحة الأمير — معالي محافظة بلّسمر"; }, []);
@@ -65,7 +65,7 @@ export default function DashboardPage() {
                     <TeamBadge letters={t.badge} color={t.color} />
                     <div>
                       <div className="text-[14.5px] font-medium text-text">
-                        <Link href={`/teams/${t.id}`} className="hover:text-accent">أسرة {t.name}</Link>
+                        <Link href={`/teams/${t.id}`} className="hover:text-accent">{teamLabel(t.name)}</Link>
                       </div>
                       <div className="text-[12px] text-text-3">مشرف: {sup?.name ?? "—"} · {roster.length} طالباً</div>
                     </div>
@@ -118,7 +118,7 @@ export default function DashboardPage() {
                 <li key={t.id} className="grid grid-cols-[24px_1fr_auto] items-center gap-3 border-b border-line py-2.5 last:border-b-0">
                   <span className={`lat text-[15px] italic ${i === 0 ? "text-accent-warm font-semibold" : "text-text-3"}`}>{i + 1}</span>
                   <div className="text-[13.5px] text-text">
-                    أسرة {t.name}
+                    {teamLabel(t.name)}
                     <span className="ms-1.5 text-[11.5px] text-text-3">— {t.tagline.split("—")[0]?.trim() ?? ""}</span>
                   </div>
                   <span className="num text-[13.5px] text-text">{t.points}<span className="ms-1 text-[10px] text-text-3">pt</span></span>

@@ -13,7 +13,7 @@ import { useStore } from "@/lib/store/StoreProvider";
 import { exportXlsx } from "@/lib/xlsx";
 import { exportStudentsPdf } from "@/lib/pdf/studentsReport";
 import type { PaymentStatus, Student } from "@/lib/mock/types";
-import { sar } from "@/lib/format";
+import { sar, teamLabel } from "@/lib/format";
 
 const grades = ["الأول ثانوي", "الثاني ثانوي", "الثالث ثانوي"];
 const sections = ["ريادة", "علو", "قيادة"] as const;
@@ -334,7 +334,7 @@ export default function StudentsPage() {
         />
         <select value={teamFilter} onChange={e => setTeamFilter(e.target.value as "ALL" | string)} className="rounded border border-line-strong bg-surface px-3 py-2 text-[13px] text-text-2">
           <option value="ALL">كلّ الأسر</option>
-          {teams.map(t => <option key={t.id} value={t.id}>أسرة {t.name}</option>)}
+          {teams.map(t => <option key={t.id} value={t.id}>{teamLabel(t.name)}</option>)}
         </select>
         <select value={payFilter} onChange={e => setPayFilter(e.target.value as "ALL" | PaymentStatus)} className="rounded border border-line-strong bg-surface px-3 py-2 text-[13px] text-text-2">
           <option value="ALL">كلّ حالات السداد</option>
@@ -388,7 +388,7 @@ export default function StudentsPage() {
                       : <span className="text-[11px] text-text-3">—</span>}
                   </td>
                   <td className="px-5 py-3">
-                    <Link href={`/teams/${s.teamId}`} className="text-text-2 hover:text-accent">أسرة {team?.name ?? "—"}</Link>
+                    <Link href={`/teams/${s.teamId}`} className="text-text-2 hover:text-accent">{teamLabel(team?.name)}</Link>
                   </td>
                   <td className="px-5 py-3 text-text-2">{s.grade} · {s.section}</td>
                   <td className="num px-5 py-3 text-end text-text-2">{s.attendance}%</td>
@@ -431,7 +431,7 @@ export default function StudentsPage() {
             <label className="block">
               <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">الأسرة</span>
               <select value={form.teamId} onChange={e => setForm({ ...form, teamId: e.target.value })} className="w-full rounded border border-line-strong bg-surface px-3 py-2 text-[14px]">
-                {teams.map(t => <option key={t.id} value={t.id}>أسرة {t.name}</option>)}
+                {teams.map(t => <option key={t.id} value={t.id}>{teamLabel(t.name)}</option>)}
               </select>
             </label>
           </div>
@@ -473,7 +473,7 @@ export default function StudentsPage() {
           <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">الأسرة</span>
           <select value={approveTeamId} onChange={e => setApproveTeamId(e.target.value)}
             className="w-full rounded border border-line-strong bg-surface px-3 py-2 text-[14px]">
-            {teams.map(t => <option key={t.id} value={t.id}>أسرة {t.name}</option>)}
+            {teams.map(t => <option key={t.id} value={t.id}>{teamLabel(t.name)}</option>)}
           </select>
         </label>
         {approveFor?.phone && (

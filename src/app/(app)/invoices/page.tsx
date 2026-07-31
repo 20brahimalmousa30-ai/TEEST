@@ -13,7 +13,7 @@ import { useSession } from "@/lib/auth/session";
 import { exportXlsx, SAR_FMT } from "@/lib/xlsx";
 import { exportTableReportPdf, esc, ltr, pill, REPORT_COLORS as RC } from "@/lib/pdf/reportEngine";
 import type { Invoice, OcrExtraction } from "@/lib/mock/types";
-import { sar } from "@/lib/format";
+import { sar, teamLabel } from "@/lib/format";
 import { fileToInvoiceImage, isSupportedInvoiceFile } from "@/lib/invoice-files";
 import { evaluateConditions, passesPolicy, CONDITION_LABELS } from "@/lib/ai/conditions";
 
@@ -233,7 +233,7 @@ export default function InvoicesPage() {
 
   function scopeLabel(s: Invoice["scope"]) {
     if (s.kind === "event") return "الفعاليّة كاملةً";
-    if (s.kind === "team") return `أسرة ${teams.find(t => t.id === s.teamId)?.name ?? "—"}`;
+    if (s.kind === "team") return teamLabel(teams.find(t => t.id === s.teamId)?.name);
     return committees.find(c => c.id === s.committeeId)?.name ?? "—";
   }
 
@@ -367,7 +367,7 @@ export default function InvoicesPage() {
               const b = t.budget ?? 0;
               return (
                 <div key={t.id} className="flex items-center justify-between rounded border border-line px-3 py-2 text-[13px]">
-                  <span className="text-text-2">أسرة {t.name}</span>
+                  <span className="text-text-2">{teamLabel(t.name)}</span>
                   <span className="num text-text">{sar(spendByScope.teamSpend[t.id])}{b > 0 ? ` / ${sar(b)}` : ""}</span>
                 </div>
               );
@@ -571,7 +571,7 @@ export default function InvoicesPage() {
                     <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">{active.scopeKind === "team" ? "الأسرة" : "اللجنة"}</span>
                     <select value={active.scopeId} onChange={e => patchActive({ scopeId: e.target.value })} className="w-full rounded border border-line-strong bg-surface px-3 py-2 text-[14px]">
                       {active.scopeKind === "team"
-                        ? teams.map(t => <option key={t.id} value={t.id}>أسرة {t.name}</option>)
+                        ? teams.map(t => <option key={t.id} value={t.id}>{teamLabel(t.name)}</option>)
                         : committees.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </label>
