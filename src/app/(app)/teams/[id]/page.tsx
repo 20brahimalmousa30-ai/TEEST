@@ -35,13 +35,13 @@ export default function TeamDetail() {
   const [form, setForm] = useState({ name: "", phone: "", grade: grades[0], section: sections[0] as (typeof sections)[number] });
 
   const team = teams.find(t => t.id === params.id);
-  useEffect(() => { document.title = team ? `فريق ${team.name} — معالي محافظة بلّسمر` : "الفرق"; }, [team]);
+  useEffect(() => { document.title = team ? `أسرة ${team.name} — معالي محافظة بلّسمر` : "الأسر"; }, [team]);
 
   if (!team) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-16 text-center">
-        <p className="text-text-2">لم أعثر على هذا الفريق. قد يكون قد حُذف.</p>
-        <Link href="/teams" className="mt-4 inline-block text-accent hover:underline">عودة للفرق →</Link>
+        <p className="text-text-2">لم أعثر على هذه الأسرة. قد تكون قد حُذفت.</p>
+        <Link href="/teams" className="mt-4 inline-block text-accent hover:underline">عودة للأسر →</Link>
       </div>
     );
   }
@@ -81,9 +81,9 @@ export default function TeamDetail() {
     const rows = roster.map(s => [s.name, s.phone, s.grade, s.section, s.attendance, s.points,
       s.paymentStatus === "PAID" ? "مسدَّد" : s.paymentStatus === "PARTIAL" ? "جزئي" : "معلّق"]);
     await exportXlsx({
-      filename: `فريق_${team!.name}_${roster.length}_عضو`,
-      sheetName: `فريق ${team!.name}`,
-      title: `فريق ${team!.name} — معالي محافظة بلّسمر`,
+      filename: `أسرة_${team!.name}_${roster.length}_عضو`,
+      sheetName: `أسرة ${team!.name}`,
+      title: `أسرة ${team!.name} — معالي محافظة بلّسمر`,
       subtitle: `${roster.length} عضو`,
       columns: [
         { header: "الاسم", width: 26, align: "right" },
@@ -124,16 +124,16 @@ export default function TeamDetail() {
   return (
     <div className="page-shell">
       <PageHeader
-        eyebrow="تفاصيلُ الفريق"
-        crumbs={[{ href: "/teams", label: "الفرق" }, { label: `فريق ${team.name}` }]}
-        title={`فريق ${team.name}`}
+        eyebrow="تفاصيلُ الأسرة"
+        crumbs={[{ href: "/teams", label: "الأسر" }, { label: `أسرة ${team.name}` }]}
+        title={`أسرة ${team.name}`}
         subtitle={team.tagline}
         action={<TeamBadge letters={team.badge} color={team.color} size={44} image={team.imageDataUrl} />}
       />
 
       <section className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard label="الأعضاء" value={roster.length} sub={`${roster.length} من ${team.studentCount || roster.length} مسجّل`} />
-        <KpiCard label="نقاط الفريق" value={team.points} sub={roster.length ? `متوسّط ${Math.round(totalPts / roster.length)} نقطة/عضو` : "—"} variant="ok" />
+        <KpiCard label="نقاط الأسرة" value={team.points} sub={roster.length ? `متوسّط ${Math.round(totalPts / roster.length)} نقطة/عضو` : "—"} variant="ok" />
         <KpiCard label="السداد" value={`${paid}/${roster.length}`} sub={partial > 0 ? `+ ${partial} جزئي · ${pending} معلّق` : "لا سدادات معلّقة"} variant={pending > roster.length * 0.2 ? "warn" : "ok"} />
         <KpiCard label="متوسّط الحضور" value={`${avgAtt}%`} variant={avgAtt >= 90 ? "ok" : "warn"} />
       </section>
@@ -192,7 +192,7 @@ export default function TeamDetail() {
             ) : <p className="text-text-3">لا مشرفٌ معيّن</p>}
           </Card>
 
-          <Card title="هُويّة الفريق">
+          <Card title="هُويّة الأسرة">
             <div className="flex items-center gap-4">
               <TeamBadge letters={team.badge} color={team.color} size={56} image={team.imageDataUrl} />
               <div className="flex-1">
@@ -205,13 +205,13 @@ export default function TeamDetail() {
                     <Button variant="ghost" onClick={() => updateTeam(team.id, { imageDataUrl: "" })}>إزالة</Button>
                   )}
                 </div>
-                <p className="mt-2 text-[12px] text-text-3">يُشتقّ لونُ الفريق تلقائياً من الصورة — بحدٍّ أقصى ٥ ميغابايت.</p>
+                <p className="mt-2 text-[12px] text-text-3">يُشتقّ لونُ الأسرة تلقائياً من الصورة — بحدٍّ أقصى ٥ ميغابايت.</p>
                 {imgErr && <p className="mt-1 text-[12px] text-critical">{imgErr}</p>}
               </div>
             </div>
           </Card>
 
-          <Card title="موازنة الفريق">
+          <Card title="موازنة الأسرة">
             <BudgetEditor
               budget={team.budget ?? 0}
               spent={invoices.filter(i => (i.status === "approved" || i.status === "paid") && i.scope.kind === "team" && i.scope.teamId === team.id).reduce((s, i) => s + i.amount, 0)}
@@ -225,7 +225,7 @@ export default function TeamDetail() {
               <Button variant="outline" onClick={() => setAddOpen(true)}>+ أضف عضواً جديداً</Button>
               <Button variant="outline" onClick={exportRoster}>⬇ تصدير قائمة الأعضاء (إكسل)</Button>
               <Button variant="outline" onClick={whatsappTeam}>↗ فتح واتساب برسالةٍ جاهزة</Button>
-              <Button variant="danger"  onClick={() => setDelOpen(true)}>🗑 إلغاء الفريق</Button>
+              <Button variant="danger"  onClick={() => setDelOpen(true)}>🗑 إلغاء الأسرة</Button>
             </div>
           </Card>
         </div>
@@ -234,7 +234,7 @@ export default function TeamDetail() {
       <Modal
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        title={`إضافة عضوٍ إلى فريق ${team.name}`}
+        title={`إضافة عضوٍ إلى أسرة ${team.name}`}
         footer={
           <>
             <Button variant="outline" type="button" onClick={() => setAddOpen(false)}>إلغاء</Button>
@@ -266,9 +266,9 @@ export default function TeamDetail() {
         open={delOpen}
         onClose={() => setDelOpen(false)}
         onConfirm={() => { deleteTeam(team!.id); router.push("/teams"); }}
-        title={`إلغاء فريق ${team.name}؟`}
-        message={`سيُحذف الفريق مع كلّ أعضائه (${roster.length} طالباً). هذا الإجراء لا يمكن التراجع عنه.`}
-        confirmLabel="نعم، احذف الفريق"
+        title={`إلغاء أسرة ${team.name}؟`}
+        message={`ستُحذف الأسرة مع كلّ أعضائها (${roster.length} طالباً). هذا الإجراء لا يمكن التراجع عنه.`}
+        confirmLabel="نعم، احذف الأسرة"
         danger
       />
     </div>

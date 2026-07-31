@@ -119,11 +119,11 @@ export default function MePage() {
           أهلاً بك يا <span className="text-accent">{student.name.split(" ")[0]}</span>
         </h1>
         <p className="mt-2 max-w-[54ch] text-[15px] text-text-2">
-          هذه صفحتُك الشخصيّة في رحلة معالي ١٤٤٨هـ — بياناتُك، فريقُك، وحالة سدادك.
+          هذه صفحتُك الشخصيّة في رحلة معالي ١٤٤٨هـ — بياناتُك، أسرتُك، وحالة سدادك.
         </p>
 
         <section className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <KpiCard label="فريقك"    value={team?.name ?? "—"} sub={`المشرف ينتظر رسالتك`} />
+          <KpiCard label="أسرتك"    value={team?.name ?? "—"} sub={`المشرف ينتظر رسالتك`} />
           <KpiCard label="نقاطك"    value={student.points} sub={`ضمن ${team?.name ?? "—"}`} variant="ok" />
           <KpiCard label="حضورك"    value={`${student.attendance}%`} variant={student.attendance >= 90 ? "ok" : "warn"} />
           <KpiCard label="حالة سدادك" value={student.paymentStatus === "PAID" ? "مكتمل" : student.paymentStatus === "PARTIAL" ? "جزئي" : "معلّق"}
@@ -196,7 +196,7 @@ export default function MePage() {
               <Row k="جهة الاتصال" v={student.emergencyContact} />
               <Row k="الرقم"       v={<span className="num">{student.emergencyPhone}</span>} />
             </dl>
-            <p className="mt-4 text-[12px] text-text-3">إن تغيّرت بيانات الطوارئ، أخبر مشرف فريقك.</p>
+            <p className="mt-4 text-[12px] text-text-3">إن تغيّرت بيانات الطوارئ، أخبر مشرف أسرتك.</p>
           </Card>
         </div>
 

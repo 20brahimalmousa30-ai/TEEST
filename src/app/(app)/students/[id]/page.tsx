@@ -122,7 +122,7 @@ export default function StudentDetail() {
         eyebrow="الشاب · بطاقةٌ شخصيّة"
         crumbs={[{ href: "/students", label: "الشباب" }, { label: s.name }]}
         title={s.name}
-        subtitle={`${s.grade} · ${s.section} · ينتمي لفريق ${team?.name ?? "—"}`}
+        subtitle={`${s.grade} · ${s.section} · ينتمي لأسرة ${team?.name ?? "—"}`}
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1.4fr]">
@@ -161,7 +161,7 @@ export default function StudentDetail() {
                   : <span key="c" className="text-text-3">—</span>],
                 ["الصف", s.grade],
                 ["القسم", s.section],
-                ["الفريق", <Link key="t" href={`/teams/${s.teamId}`} className="text-accent hover:underline">فريق {team?.name ?? "—"}</Link>],
+                ["الأسرة", <Link key="t" href={`/teams/${s.teamId}`} className="text-accent hover:underline">أسرة {team?.name ?? "—"}</Link>],
                 ["نقاطه", <span key="pt" className="num">{s.points}</span>],
                 ["نسبة الحضور", <span key="a" className="num">{s.attendance}%</span>],
                 ["حالة الاعتماد", <Pill key="st" variant={s.approvalStatus === "REJECTED" ? "critical" : s.approvalStatus === "PENDING" ? "warn" : "ok"}>
@@ -276,7 +276,7 @@ export default function StudentDetail() {
                   والخادم يتحقّق من الصلاحيّة ذاتها في كلّ عمليّة (لا يكفي إخفاء الزر). */}
               {canManage && <>
                 <Button variant="outline" onClick={() => setEditOpen(true)}>✎ تعديل البيانات</Button>
-                <Button variant="outline" onClick={() => setMoveOpen(true)}>↔ نقل إلى فريقٍ آخر</Button>
+                <Button variant="outline" onClick={() => setMoveOpen(true)}>↔ نقل إلى أسرةٍ أخرى</Button>
                 <Button variant="danger"  onClick={() => setDelOpen(true)}>🗑 إخراجٌ من الرحلة</Button>
               </>}
             </div>
@@ -345,7 +345,7 @@ export default function StudentDetail() {
       <Modal
         open={moveOpen}
         onClose={() => setMoveOpen(false)}
-        title="نقلٌ إلى فريقٍ آخر"
+        title="نقلٌ إلى أسرةٍ أخرى"
         size="sm"
         footer={
           <>
@@ -355,13 +355,13 @@ export default function StudentDetail() {
         }
       >
         <form id="move-student" onSubmit={saveMove} className="grid gap-3">
-          <p className="text-[13px] text-text-2">اختر الفريق الجديد لـ<b>{s.name}</b>:</p>
+          <p className="text-[13px] text-text-2">اختر الأسرة الجديدة لـ<b>{s.name}</b>:</p>
           <div className="grid gap-2">
             {teams.map(t => (
               <label key={t.id} className={`flex cursor-pointer items-center gap-3 rounded border p-3 ${moveTo === t.id ? "border-accent bg-accent/5" : "border-line hover:border-accent-warm"}`}>
                 <input type="radio" name="team" value={t.id} checked={moveTo === t.id} onChange={() => setMoveTo(t.id)} className="accent-[color:var(--accent)]" />
                 <span className="h-3 w-3 rounded" style={{ background: t.color }} />
-                <span className="text-[13.5px] text-text">فريق {t.name}</span>
+                <span className="text-[13.5px] text-text">أسرة {t.name}</span>
                 {t.id === s.teamId && <span className="ms-auto text-[11px] text-text-3">(الحالي)</span>}
               </label>
             ))}

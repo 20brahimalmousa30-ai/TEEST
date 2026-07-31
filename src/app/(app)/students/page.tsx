@@ -123,7 +123,7 @@ export default function StudentsPage() {
         { header: "الجوّال", width: 16, align: "center" },
         { header: "الصف", width: 14, align: "center" },
         { header: "القسم", width: 12, align: "center" },
-        { header: "الأسرة (الفريق)", width: 20, align: "right" },
+        { header: "الأسرة", width: 20, align: "right" },
         { header: "النقاط", width: 11, align: "center", numFmt: "#,##0" },
         { header: "السداد", width: 13, align: "center" },
       ],
@@ -183,7 +183,7 @@ export default function StudentsPage() {
       <PageHeader
         eyebrow="الشباب"
         title="الشباب"
-        subtitle={`${summary.total} شاباً معتمداً موزَّعون على ${teams.length} فريقاً. البحث والفلترة تعملان مباشرةً على القائمة أدناه.`}
+        subtitle={`${summary.total} شاباً معتمداً موزَّعون على ${teams.length} أسرة. البحث والفلترة تعملان مباشرةً على القائمة أدناه.`}
         action={<Button variant="primary" onClick={() => setOpenAdd(true)}>+ شابٌّ جديد</Button>}
       />
 
@@ -333,8 +333,8 @@ export default function StudentsPage() {
           className="min-w-[220px] flex-1 rounded border border-line-strong bg-surface px-4 py-2 text-[14px] placeholder:text-text-3"
         />
         <select value={teamFilter} onChange={e => setTeamFilter(e.target.value as "ALL" | string)} className="rounded border border-line-strong bg-surface px-3 py-2 text-[13px] text-text-2">
-          <option value="ALL">كلّ الفرق</option>
-          {teams.map(t => <option key={t.id} value={t.id}>فريق {t.name}</option>)}
+          <option value="ALL">كلّ الأسر</option>
+          {teams.map(t => <option key={t.id} value={t.id}>أسرة {t.name}</option>)}
         </select>
         <select value={payFilter} onChange={e => setPayFilter(e.target.value as "ALL" | PaymentStatus)} className="rounded border border-line-strong bg-surface px-3 py-2 text-[13px] text-text-2">
           <option value="ALL">كلّ حالات السداد</option>
@@ -358,7 +358,7 @@ export default function StudentsPage() {
               <th className="px-5 py-3 text-start font-normal">الاسم</th>
               <th className="px-5 py-3 text-start font-normal">الجوّال</th>
               <th className="px-5 py-3 text-start font-normal">الرمز</th>
-              <th className="px-5 py-3 text-start font-normal">الفريق</th>
+              <th className="px-5 py-3 text-start font-normal">الأسرة</th>
               <th className="px-5 py-3 text-start font-normal">الصف · القسم</th>
               <th className="px-5 py-3 text-end font-normal">الحضور</th>
               <th className="px-5 py-3 text-end font-normal">النقاط</th>
@@ -388,7 +388,7 @@ export default function StudentsPage() {
                       : <span className="text-[11px] text-text-3">—</span>}
                   </td>
                   <td className="px-5 py-3">
-                    <Link href={`/teams/${s.teamId}`} className="text-text-2 hover:text-accent">فريق {team?.name ?? "—"}</Link>
+                    <Link href={`/teams/${s.teamId}`} className="text-text-2 hover:text-accent">أسرة {team?.name ?? "—"}</Link>
                   </td>
                   <td className="px-5 py-3 text-text-2">{s.grade} · {s.section}</td>
                   <td className="num px-5 py-3 text-end text-text-2">{s.attendance}%</td>
@@ -429,9 +429,9 @@ export default function StudentsPage() {
           <div className="grid grid-cols-2 gap-3">
             <Field label="الجوّال" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="0555 000 000" />
             <label className="block">
-              <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">الفريق</span>
+              <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">الأسرة</span>
               <select value={form.teamId} onChange={e => setForm({ ...form, teamId: e.target.value })} className="w-full rounded border border-line-strong bg-surface px-3 py-2 text-[14px]">
-                {teams.map(t => <option key={t.id} value={t.id}>فريق {t.name}</option>)}
+                {teams.map(t => <option key={t.id} value={t.id}>أسرة {t.name}</option>)}
               </select>
             </label>
           </div>
@@ -461,7 +461,7 @@ export default function StudentsPage() {
         open={approveFor !== null}
         onClose={() => setApproveFor(null)}
         title={approveFor ? `اعتماد الشاب ${approveFor.name}` : ""}
-        subtitle="اختر الفريق الذي ينضمّ إليه. عند التأكيد سيُنقل إلى قائمة «غير المسدَّدين» وسيُولَّد له رمز دخول."
+        subtitle="اختر الأسرة التي ينضمّ إليها. عند التأكيد سيُنقل إلى قائمة «غير المسدَّدين» وسيُولَّد له رمز دخول."
         footer={
           <>
             <Button variant="outline" onClick={() => setApproveFor(null)}>إلغاء</Button>
@@ -470,10 +470,10 @@ export default function StudentsPage() {
         }
       >
         <label className="block">
-          <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">الفريق</span>
+          <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">الأسرة</span>
           <select value={approveTeamId} onChange={e => setApproveTeamId(e.target.value)}
             className="w-full rounded border border-line-strong bg-surface px-3 py-2 text-[14px]">
-            {teams.map(t => <option key={t.id} value={t.id}>فريق {t.name}</option>)}
+            {teams.map(t => <option key={t.id} value={t.id}>أسرة {t.name}</option>)}
           </select>
         </label>
         {approveFor?.phone && (

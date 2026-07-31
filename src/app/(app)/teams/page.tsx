@@ -12,7 +12,7 @@ import { useStore } from "@/lib/store/StoreProvider";
 const swatches = ["#1E4635", "#6B7A3E", "#8C5A3C", "#4E6B7A", "#7A5B2E", "#3F5B4E", "#5A4A7A", "#6B4A3E", "#2E5A5A", "#4A6B2E", "#7A4A5A", "#5A6B3E"];
 
 export default function TeamsPage() {
-  useEffect(() => { document.title = "الفرق — معالي محافظة بلّسمر"; }, []);
+  useEffect(() => { document.title = "الأسر — معالي محافظة بلّسمر"; }, []);
   const { teams, students, supervisors, addTeam } = useStore();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -24,7 +24,7 @@ export default function TeamsPage() {
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !badge.trim()) return;
-    addTeam(name.trim(), color, badge.trim(), supervisorId, tagline.trim() || "فريقٌ جديد لم يبدأ رحلته بعد.");
+    addTeam(name.trim(), color, badge.trim(), supervisorId, tagline.trim() || "أسرةٌ جديدة لم تبدأ رحلتها بعد.");
     setName(""); setBadge(""); setTagline(""); setColor(swatches[0]);
     setOpen(false);
   }
@@ -32,10 +32,10 @@ export default function TeamsPage() {
   return (
     <div className="page-shell">
       <PageHeader
-        eyebrow={`الفرق · ${teams.length} فريقاً`}
-        title="الفرق"
-        subtitle="اثنا عشر فريقاً، لكلٍّ منها مشرفٌ ولونٌ خاص. اضغط أيّ فريقٍ لعرض قائمة أعضائه وتفاصيل نقاطه."
-        action={<Button variant="primary" onClick={() => setOpen(true)}>+ فريقٌ جديد</Button>}
+        eyebrow={`الأسر · ${teams.length} أسرة`}
+        title="الأسر"
+        subtitle="اثنتا عشرة أسرةً، لكلٍّ منها مشرفٌ ولونٌ خاص. اضغط أيّ أسرةٍ لعرض قائمة أعضائها وتفاصيل نقاطها."
+        action={<Button variant="primary" onClick={() => setOpen(true)}>+ أسرةٌ جديدة</Button>}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -54,7 +54,7 @@ export default function TeamsPage() {
               <div className="flex items-start gap-3">
                 <TeamBadge letters={t.badge} color={t.color} size={44} image={t.imageDataUrl} />
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-[16.5px] font-semibold text-text group-hover:text-accent">فريق {t.name}</h3>
+                  <h3 className="text-[16.5px] font-semibold text-text group-hover:text-accent">أسرة {t.name}</h3>
                   <p className="mt-0.5 text-[12px] text-text-3">مشرف: {sup?.name ?? "—"}</p>
                 </div>
                 <span className="num text-[13.5px] text-accent-warm-2 whitespace-nowrap">{t.points} نقطة</span>
@@ -72,17 +72,17 @@ export default function TeamsPage() {
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title="إضافة فريقٍ جديد"
-        subtitle="ستُنشأ ببيانات فارغة — أضف أعضاءها لاحقاً من صفحة الفريق."
+        title="إضافة أسرةٍ جديدة"
+        subtitle="ستُنشأ ببيانات فارغة — أضف أعضاءها لاحقاً من صفحة الأسرة."
         footer={
           <>
             <Button variant="outline" type="button" onClick={() => setOpen(false)}>إلغاء</Button>
-            <Button type="submit" form="new-team">إنشاء الفريق</Button>
+            <Button type="submit" form="new-team">إنشاء الأسرة</Button>
           </>
         }
       >
         <form id="new-team" onSubmit={submit} className="grid gap-4">
-          <Field label="اسم الفريق" value={name} onChange={e => setName(e.target.value)} placeholder="مثال: القمم" required />
+          <Field label="اسم الأسرة" value={name} onChange={e => setName(e.target.value)} placeholder="مثال: القمم" required />
           <div className="grid grid-cols-2 gap-3">
             <Field label="حرف/رمز (١-٢ حرف)" value={badge} onChange={e => setBadge(e.target.value.slice(0, 2))} placeholder="Q" maxLength={2} required />
             <label className="block">
@@ -107,7 +107,7 @@ export default function TeamsPage() {
               ))}
             </div>
           </div>
-          <Field label="وصف قصير (اختياري)" value={tagline} onChange={e => setTagline(e.target.value)} placeholder="فريقٌ يتميّز بـ..." />
+          <Field label="وصف قصير (اختياري)" value={tagline} onChange={e => setTagline(e.target.value)} placeholder="أسرةٌ تتميّز بـ..." />
         </form>
       </Modal>
     </div>

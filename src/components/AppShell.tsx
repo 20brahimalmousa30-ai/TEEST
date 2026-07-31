@@ -18,7 +18,7 @@ const fullNav: NavGroup[] = [
     label: "الفعاليّة",
     items: [
       { href: "/dashboard",   label: "نظرةٌ عامّة", icon: <IconHome /> },
-      { href: "/teams",       label: "الفرق",       icon: <IconTeams /> },
+      { href: "/teams",       label: "الأسر",       icon: <IconTeams /> },
       { href: "/committees",  label: "اللجان",       icon: <IconCommittee /> },
       { href: "/students",    label: "الشباب",        icon: <IconStudents /> },
       { href: "/supervisors", label: "المشرفون",     icon: <IconSupervisor /> },
@@ -49,7 +49,7 @@ const supervisorNav: NavGroup[] = [
   {
     label: "نطاقي",
     items: [
-      { href: "/my-team",    label: "فريقي",           icon: <IconTeams /> },
+      { href: "/my-team",    label: "أسرتي",           icon: <IconTeams /> },
       { href: "/my-committee", label: "لجنتي",         icon: <IconCommittee /> },
       { href: "/tasks",       label: "رصد المهام",     icon: <IconTasks /> },
       { href: "/leaderboard", label: "قائمة الصدارة", icon: <IconTrophy /> },
@@ -118,7 +118,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const extra: NavItem[] = [];
     if (perms.includes("invoices"))   extra.push({ href: "/invoices",   label: "الفواتير", icon: <IconInvoice /> });
     if (perms.includes("students"))   extra.push({ href: "/students",   label: "الشباب",    icon: <IconStudents /> });
-    if (perms.includes("teams"))      extra.push({ href: "/teams",      label: "الفرق",     icon: <IconTeams /> });
+    if (perms.includes("teams"))      extra.push({ href: "/teams",      label: "الأسر",     icon: <IconTeams /> });
     if (perms.includes("committees")) extra.push({ href: "/committees", label: "اللجان",     icon: <IconCommittee /> });
     if (extra.length === 0) return supervisorNav;
     return [

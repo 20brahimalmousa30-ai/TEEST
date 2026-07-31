@@ -53,7 +53,7 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.35fr_1fr]">
         <div className="flex flex-col gap-6">
-          <Card title="الفرق النشطة" action={<Link href="/teams" className="text-[13px] text-accent hover:underline">كلّها ←</Link>} padded={false}>
+          <Card title="الأسر النشطة" action={<Link href="/teams" className="text-[13px] text-accent hover:underline">كلّها ←</Link>} padded={false}>
             <ul>
               {topTeams.map(t => {
                 const sup = supervisors.find(s => s.id === t.supervisorId);
@@ -65,7 +65,7 @@ export default function DashboardPage() {
                     <TeamBadge letters={t.badge} color={t.color} />
                     <div>
                       <div className="text-[14.5px] font-medium text-text">
-                        <Link href={`/teams/${t.id}`} className="hover:text-accent">فريق {t.name}</Link>
+                        <Link href={`/teams/${t.id}`} className="hover:text-accent">أسرة {t.name}</Link>
                       </div>
                       <div className="text-[12px] text-text-3">مشرف: {sup?.name ?? "—"} · {roster.length} طالباً</div>
                     </div>
@@ -118,7 +118,7 @@ export default function DashboardPage() {
                 <li key={t.id} className="grid grid-cols-[24px_1fr_auto] items-center gap-3 border-b border-line py-2.5 last:border-b-0">
                   <span className={`lat text-[15px] italic ${i === 0 ? "text-accent-warm font-semibold" : "text-text-3"}`}>{i + 1}</span>
                   <div className="text-[13.5px] text-text">
-                    فريق {t.name}
+                    أسرة {t.name}
                     <span className="ms-1.5 text-[11.5px] text-text-3">— {t.tagline.split("—")[0]?.trim() ?? ""}</span>
                   </div>
                   <span className="num text-[13.5px] text-text">{t.points}<span className="ms-1 text-[10px] text-text-3">pt</span></span>

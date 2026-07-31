@@ -67,7 +67,7 @@ export type Supervisor = {
 export const SUPERVISOR_PERMISSIONS = [
   { key: "invoices",   label: "إضافة الفواتير", href: "/invoices" },
   { key: "students",   label: "إدارة الشباب",    href: "/students" },
-  { key: "teams",      label: "إدارة الفرق",     href: "/teams" },
+  { key: "teams",      label: "إدارة الأسر",     href: "/teams" },
   { key: "committees", label: "إدارة اللجان",    href: "/committees" },
 ] as const;
 

@@ -44,7 +44,7 @@ export default function SupervisorsPage() {
         { header: "الاسم", width: 26, align: "right" },
         { header: "الجوّال", width: 16, align: "center" },
         { header: "البريد", width: 24, align: "right" },
-        { header: "عدد الفرق", width: 12, align: "center", numFmt: "0" },
+        { header: "عدد الأسر", width: 12, align: "center", numFmt: "0" },
         { header: "عدد اللجان", width: 12, align: "center", numFmt: "0" },
         ...(canApprove ? [{ header: "رقم الهويّة", width: 16, align: "center" as const }] : []),
       ],
@@ -127,7 +127,7 @@ export default function SupervisorsPage() {
       <PageHeader
         eyebrow="المشرفون"
         title="المشرفون"
-        subtitle={`${supervisors.length} مشرفاً. المشرف الواحد قد يقود فريقاً وينتمي لأكثر من لجنةٍ معاً.`}
+        subtitle={`${supervisors.length} مشرفاً. المشرف الواحد قد يقود أسرةً وينتمي لأكثر من لجنةٍ معاً.`}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={() => fileRef.current?.click()}>استيراد Excel</Button>
@@ -157,7 +157,7 @@ export default function SupervisorsPage() {
             <tr className="border-b border-line">
               <th className="px-5 py-3 text-start font-normal">المشرف</th>
               <th className="px-5 py-3 text-start font-normal">الاتصال</th>
-              <th className="px-5 py-3 text-start font-normal">الفرق</th>
+              <th className="px-5 py-3 text-start font-normal">الأسر</th>
               <th className="px-5 py-3 text-start font-normal">اللجان</th>
               <th className="px-5 py-3 text-start font-normal">الصلاحيات</th>
               <th className="px-5 py-3 text-end font-normal"></th>
@@ -191,7 +191,7 @@ export default function SupervisorsPage() {
                 </td>
                 <td className="px-5 py-3">
                   {sup.teamIds.length > 0
-                    ? <div className="flex flex-wrap gap-1.5">{sup.teamIds.map(tid => { const t = teams.find(x => x.id === tid); return t && <Pill key={tid} variant="info">فريق {t.name}</Pill>; })}</div>
+                    ? <div className="flex flex-wrap gap-1.5">{sup.teamIds.map(tid => { const t = teams.find(x => x.id === tid); return t && <Pill key={tid} variant="info">أسرة {t.name}</Pill>; })}</div>
                     : <span className="text-text-3">—</span>}
                 </td>
                 <td className="px-5 py-3">
@@ -265,12 +265,12 @@ export default function SupervisorsPage() {
             />
           )}
           <div>
-            <div className="mb-2 text-[12px] tracking-[.12em] text-text-3">الفرق ({form.teamIds.length})</div>
+            <div className="mb-2 text-[12px] tracking-[.12em] text-text-3">الأسر ({form.teamIds.length})</div>
             <div className="grid max-h-32 grid-cols-2 gap-2 overflow-y-auto rounded border border-line p-3 text-[13px]">
               {teams.map(t => (
                 <label key={t.id} className="flex cursor-pointer items-center gap-2">
                   <input type="checkbox" checked={form.teamIds.includes(t.id)} onChange={() => toggleFrom("teamIds", t.id)} className="accent-[color:var(--accent)]" />
-                  <span className="text-text-2">فريق {t.name}</span>
+                  <span className="text-text-2">أسرة {t.name}</span>
                 </label>
               ))}
             </div>
@@ -306,7 +306,7 @@ export default function SupervisorsPage() {
         onClose={() => setToDelete(null)}
         onConfirm={() => toDelete && deleteSupervisor(toDelete.id)}
         title={`حذف المشرف ${toDelete?.name}؟`}
-        message="سيُزال المشرف من كلّ الفرق واللجان المرتبطة به."
+        message="سيُزال المشرف من كلّ الأسر واللجان المرتبطة به."
         confirmLabel="نعم، احذف"
         danger
       />

@@ -233,7 +233,7 @@ export default function InvoicesPage() {
 
   function scopeLabel(s: Invoice["scope"]) {
     if (s.kind === "event") return "الفعاليّة كاملةً";
-    if (s.kind === "team") return `فريق ${teams.find(t => t.id === s.teamId)?.name ?? "—"}`;
+    if (s.kind === "team") return `أسرة ${teams.find(t => t.id === s.teamId)?.name ?? "—"}`;
     return committees.find(c => c.id === s.committeeId)?.name ?? "—";
   }
 
@@ -367,7 +367,7 @@ export default function InvoicesPage() {
               const b = t.budget ?? 0;
               return (
                 <div key={t.id} className="flex items-center justify-between rounded border border-line px-3 py-2 text-[13px]">
-                  <span className="text-text-2">فريق {t.name}</span>
+                  <span className="text-text-2">أسرة {t.name}</span>
                   <span className="num text-text">{sar(spendByScope.teamSpend[t.id])}{b > 0 ? ` / ${sar(b)}` : ""}</span>
                 </div>
               );
@@ -562,16 +562,16 @@ export default function InvoicesPage() {
                   <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">المصروف على</span>
                   <select value={active.scopeKind} onChange={e => patchActive({ scopeKind: e.target.value as "event" | "team" | "committee", scopeId: defaultScopeId })} className="w-full rounded border border-line-strong bg-surface px-3 py-2 text-[14px]">
                     <option value="event">الفعاليّة كاملة</option>
-                    <option value="team">فريق</option>
+                    <option value="team">أسرة</option>
                     <option value="committee">لجنة</option>
                   </select>
                 </label>
                 {active.scopeKind !== "event" && (
                   <label className="block">
-                    <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">{active.scopeKind === "team" ? "الفريق" : "اللجنة"}</span>
+                    <span className="mb-1.5 block text-[12px] tracking-[.12em] text-text-3">{active.scopeKind === "team" ? "الأسرة" : "اللجنة"}</span>
                     <select value={active.scopeId} onChange={e => patchActive({ scopeId: e.target.value })} className="w-full rounded border border-line-strong bg-surface px-3 py-2 text-[14px]">
                       {active.scopeKind === "team"
-                        ? teams.map(t => <option key={t.id} value={t.id}>فريق {t.name}</option>)
+                        ? teams.map(t => <option key={t.id} value={t.id}>أسرة {t.name}</option>)
                         : committees.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </label>

@@ -108,7 +108,7 @@ export default function CommitteesPage() {
       <PageHeader
         eyebrow={`اللجان · ${committees.length} لجنة`}
         title="اللجان"
-        subtitle="سبعُ لجان (أو أكثر) تدير التفاصيل التشغيليّة للرحلة. المشرف الواحد قد يكون عضواً في أكثر من لجنةٍ وفي فريقٍ معاً."
+        subtitle="سبعُ لجان (أو أكثر) تدير التفاصيل التشغيليّة للرحلة. المشرف الواحد قد يكون عضواً في أكثر من لجنةٍ وفي أسرةٍ معاً."
         action={<Button variant="primary" onClick={openNew}>+ لجنةٌ جديدة</Button>}
       />
 

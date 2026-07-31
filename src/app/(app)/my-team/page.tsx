@@ -29,7 +29,7 @@ export default function MyTeamPage() {
     else if (session.role === "PRINCE" || session.role === "DEPUTY_PRINCE") router.replace("/dashboard");
     else if (session.role === "BENEFICIARY") router.replace("/me");
   }, [ready, session, router]);
-  useEffect(() => { document.title = "فريقي — معالي محافظة بلّسمر"; }, []);
+  useEffect(() => { document.title = "أسرتي — معالي محافظة بلّسمر"; }, []);
 
   if (!hydrated || !ready || !session || session.role !== "SUPERVISOR") return null;
 
@@ -37,7 +37,7 @@ export default function MyTeamPage() {
   if (!sup || sup.teamIds.length === 0) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-8">
-        <PageHeader eyebrow="فريقي" title="لا فريقٌ معيَّن لك بعد" subtitle="راجع الإدارة إن كنتَ تتوقّع الظهور كمشرفِ فريق." />
+        <PageHeader eyebrow="أسرتي" title="لا أسرةٌ معيَّنة لك بعد" subtitle="راجع الإدارة إن كنتَ تتوقّع الظهور كمشرفِ أسرة." />
       </div>
     );
   }
@@ -53,9 +53,9 @@ export default function MyTeamPage() {
     const rows = roster.map(s => [s.name, s.phone, s.grade, s.section,
       s.paymentStatus === "PAID" ? "مسدَّد" : s.paymentStatus === "PARTIAL" ? "جزئي" : "معلّق"]);
     await exportXlsx({
-      filename: `فريقي_${team.name}`,
-      sheetName: "فريقي",
-      title: `فريق ${team.name} — معالي محافظة بلّسمر`,
+      filename: `أسرتي_${team.name}`,
+      sheetName: "أسرتي",
+      title: `أسرة ${team.name} — معالي محافظة بلّسمر`,
       subtitle: `${roster.length} عضو`,
       columns: [
         { header: "الاسم", width: 26, align: "right" },
@@ -68,33 +68,33 @@ export default function MyTeamPage() {
     });
   }
   function whatsappParents() {
-    const msg = encodeURIComponent(`السلام عليكم أولياء أمور فريق ${team.name} — تذكير باللقاء المسائي غداً في الساعة السابعة.`);
+    const msg = encodeURIComponent(`السلام عليكم أولياء أمور أسرة ${team.name} — تذكير باللقاء المسائي غداً في الساعة السابعة.`);
     window.open(`https://wa.me/?text=${msg}`, "_blank", "noopener");
   }
 
   return (
     <div className="page-shell">
       <PageHeader
-        eyebrow="فريقي · نطاقُ المشرف"
-        title={`فريق ${team.name}`}
-        subtitle="أنت تشرف على هذا الفريق. لا ترى بيانات الفرق الأخرى."
+        eyebrow="أسرتي · نطاقُ المشرف"
+        title={`أسرة ${team.name}`}
+        subtitle="أنت تشرف على هذه الأسرة. لا ترى بيانات الأسر الأخرى."
         action={<TeamBadge letters={team.badge} color={team.color} size={44} />}
       />
 
       <div className="mb-6 rounded-md border border-accent-warm/40 bg-accent-warm/5 px-4 py-3 text-[13px] text-text-2">
-        ↺ <span className="font-medium text-text">حدود صلاحيّتك:</span> تعديل بيانات أعضاء فريقك، تسجيل الحضور، ورفع فواتير خاصّة بالفريق فقط.
+        ↺ <span className="font-medium text-text">حدود صلاحيّتك:</span> تعديل بيانات أعضاء أسرتك، تسجيل الحضور، ورفع فواتير خاصّة بالأسرة فقط.
       </div>
 
       <section className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard label="الأعضاء" value={roster.length} sub={`${team.studentCount || roster.length} مسجّل`} />
-        <KpiCard label="نقاط الفريق" value={team.points} variant="ok" sub={team.tagline.split("—")[0]?.trim()} />
+        <KpiCard label="نقاط الأسرة" value={team.points} variant="ok" sub={team.tagline.split("—")[0]?.trim()} />
         <KpiCard label="السداد" value={`${paid}/${roster.length}`} sub={partial > 0 ? `+ ${partial} جزئي · ${pending} معلّق` : "لا معلّقات"} variant={pending > roster.length * 0.2 ? "warn" : "ok"} />
         <KpiCard label="متوسّط الحضور" value={`${avgAtt}%`} variant={avgAtt >= 90 ? "ok" : "warn"} />
       </section>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.5fr_1fr]">
         <Card
-          title={`أعضاء فريقي (${roster.length})`}
+          title={`أعضاء أسرتي (${roster.length})`}
           action={
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setAttOpen(true)}>✓ تسجيل الحضور</Button>
@@ -130,7 +130,7 @@ export default function MyTeamPage() {
               <Button variant="outline" onClick={() => setAttOpen(true)}>✓ تسجيل الحضور لليوم</Button>
               <Button variant="outline" onClick={whatsappParents}>↗ رسالة لأولياء الأمور</Button>
               <Link href={`/teams/${team.id}`} className="rounded border border-line px-4 py-2 text-center text-[13px] text-text hover:border-accent">
-                عرض تفاصيل الفريق
+                عرض تفاصيل الأسرة
               </Link>
             </div>
           </Card>
@@ -149,7 +149,7 @@ export default function MyTeamPage() {
       <Modal
         open={attOpen}
         onClose={() => setAttOpen(false)}
-        title={`تسجيل حضور فريق ${team.name}`}
+        title={`تسجيل حضور أسرة ${team.name}`}
         subtitle="اضغط على أيّ عضوٍ لتبديل حالة حضوره في اليوم المُختار."
         size="lg"
         footer={<Button onClick={() => setAttOpen(false)}>تم</Button>}
