@@ -522,14 +522,25 @@ create table if not exists student_tasks (
   id          text primary key,
   student_id  text not null references students(id) on delete cascade,
   title       text not null,
-  points      integer not null default 0,   -- النقاط التحفيزيّة عند الإنجاز
-  assigned_by text,                          -- مُعرِّف مَن رصد المهمّة (مشرف/أمير)
+  points      integer not null default 0,   -- النقاط: موجبة = نشاط، سالبة = خصم
+  assigned_by text,                          -- مُعرِّف مَن رصد النشاط (مشرف/أمير)
   visible     boolean not null default true, -- إظهار/إخفاء عن الطالب
-  due_date    text,                          -- موعدٌ نهائيّ اختياري
+  due_date    text,                          -- موعدٌ نهائيّ اختياري (توافقٌ قديم)
   done        boolean not null default false,
+  kind        text not null default 'activity', -- 'activity' نشاط | 'deduction' خصم
+  batch_id    text,                          -- يجمع صفوف الرصد الجماعيّ (أسرة/الكل) معاً
+  scope_label text,                          -- وصفُ النطاق للعرض (مثل «أسرة الشوامخ»/«كل الطلاب»)
+  expires_at  timestamptz,                   -- إغلاقٌ تلقائيّ للنشاط المؤقّت (null = مفتوح)
   created_at  timestamptz not null default now()
 );
 create index if not exists idx_student_tasks_student on student_tasks (student_id);
+create index if not exists idx_student_tasks_batch on student_tasks (batch_id);
+
+-- ── ترحيلٌ للجداول القائمة (شغّله مرّةً في Supabase SQL Editor) ──
+alter table student_tasks add column if not exists kind        text not null default 'activity';
+alter table student_tasks add column if not exists batch_id    text;
+alter table student_tasks add column if not exists scope_label text;
+alter table student_tasks add column if not exists expires_at  timestamptz;
 
 -- ═══════════════════════════════════════════════════════════════════════
 --  تعديل قيمة الرسوم من لوحة الأمير: قيمةٌ افتراضيّة تُطبَّق على جميع الطلاب،

@@ -8,6 +8,7 @@ import { VersionWatcher } from "./VersionWatcher";
 import { useSession, clearSession, announceSessionChange } from "@/lib/auth/session";
 import { roleLabel } from "@/lib/auth/accounts";
 import { useStore } from "@/lib/store/StoreProvider";
+import { studentsNet, totalNet } from "@/lib/points";
 
 type NavItem = { href: string; label: string; icon: React.ReactNode; count?: string };
 type NavGroup = { label: string; items: NavItem[] };
@@ -22,7 +23,7 @@ const fullNav: NavGroup[] = [
       { href: "/committees",  label: "اللجان",       icon: <IconCommittee /> },
       { href: "/students",    label: "الشباب",        icon: <IconStudents /> },
       { href: "/supervisors", label: "المشرفون",     icon: <IconSupervisor /> },
-      { href: "/tasks",       label: "رصد المهام",    icon: <IconTasks /> },
+      { href: "/tasks",       label: "رصد الأنشطة",    icon: <IconTasks /> },
     ],
   },
   {
@@ -51,7 +52,7 @@ const supervisorNav: NavGroup[] = [
     items: [
       { href: "/my-team",    label: "أسرتي",           icon: <IconTeams /> },
       { href: "/my-committee", label: "لجنتي",         icon: <IconCommittee /> },
-      { href: "/tasks",       label: "رصد المهام",     icon: <IconTasks /> },
+      { href: "/tasks",       label: "رصد الأنشطة",     icon: <IconTasks /> },
       { href: "/leaderboard", label: "قائمة الصدارة", icon: <IconTrophy /> },
     ],
   },
@@ -67,7 +68,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "";
   const router = useRouter();
   const { session, ready } = useSession();
-  const { supervisors, hydrated } = useStore();
+  const { supervisors, students, studentTasks, hydrated } = useStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // البند ١٨: صلاحيات المشرف الحاليّ (تُقرأ من المتجر عبر supervisorId في الجلسة).
@@ -75,6 +76,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     ? supervisors.find(s => s.id === session.supervisorId)
     : undefined;
   const myPerms = mySupervisor?.permissions ?? [];
+
+  // عدّاد النقاط: المشرف يرى صافي نقاط أُسَره؛ الأمير/نائبه الإجمالي العام.
+  const isSup = session?.role === "SUPERVISOR";
+  const pointsValue = isSup
+    ? studentsNet(studentTasks, new Set(students.filter(s => (mySupervisor?.teamIds ?? []).includes(s.teamId)).map(s => s.id)))
+    : totalNet(studentTasks);
+  const pointsLabel = isSup ? "نقاط أُسَرك" : "إجمالي النقاط";
 
   // حارس الدخول: أيّ زائرٍ غير مسجّل (لا جلسة) يُحوَّل لصفحة الدخول —
   // يمنع الوصول المباشر إلى /dashboard وبقيّة لوحة الإدارة بلا مصادقة.
@@ -243,7 +251,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
           </button>
-          <Logo size={40} />
+          {session && <PointsBadge label={pointsLabel} value={pointsValue} />}
           {session ? (
             <button onClick={onLogout} className="text-[12px] text-accent">
               خروج
@@ -252,6 +260,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="w-9" />
           )}
         </div>
+        {/* شريطٌ علويّ لسطح المكتب — يحمل عدّاد النقاط الحيّ. */}
+        {session && (
+          <div className="app-desktopbar sticky top-0 z-20 hidden items-center justify-end border-b border-line bg-bg-raised/70 px-6 py-2 backdrop-blur md:flex">
+            <PointsBadge label={pointsLabel} value={pointsValue} />
+          </div>
+        )}
         {/* مبدأٌ ثابت: فشل التحميل يظهر صراحةً (بدل قوائم فارغةٍ توحي بالحذف). */}
         <LoadErrorBanner />
         <main className="flex-1">{children}</main>
@@ -282,6 +296,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     {/* كشفٌ تلقائيّ لأيّ نشرٍ جديد → «تحديث الآن» دون تدخّلٍ يدويّ. */}
     <VersionWatcher />
     </>
+  );
+}
+
+/* ─── عدّاد النقاط الحيّ ─── */
+function PointsBadge({ label, value }: { label: string; value: number }) {
+  return (
+    <span className="flex items-center gap-1.5 rounded-full border border-accent-warm/40 bg-accent-warm/10 px-3 py-1 text-[13px]">
+      <span className="text-accent-warm-2"><IconTrophy /></span>
+      <span className="text-[11px] text-text-3">{label}</span>
+      <span className="num font-semibold text-text">{value}</span>
+    </span>
   );
 }
 

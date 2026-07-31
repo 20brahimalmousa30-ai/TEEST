@@ -34,16 +34,30 @@ export type CommitteeTask = {
   createdAt: string;
 };
 
-/** مهمّةٌ تحفيزيّة/ذاتيّة تُرصَد لطالبٍ بعينه، ولكلّ مهمّةٍ نقاطٌ محفِّزة. */
+/** نوعُ الرصد: نشاطٌ (نقاطٌ موجبة) أو خصمٌ (نقاطٌ سالبة). */
+export type ActivityKind = "activity" | "deduction";
+
+/** نطاقُ الرصد: طالبٌ بعينه، أو أُسَرٌ محدَّدة، أو كلّ الطلاب. */
+export type ActivityTarget =
+  | { kind: "student"; studentId: string }
+  | { kind: "teams"; teamIds: string[] }
+  | { kind: "all" };
+
+/** نشاطٌ/خصمٌ يُرصَد لطالبٍ بعينه — يرصده الطاقمُ فقط، ويراه الطالبُ في صفحته.
+ *  الرصدُ الجماعيّ (أسرة/الكل) يُنشئ صفّاً لكلّ طالبٍ بنفس batchId. */
 export type StudentTask = {
   id: string;
   studentId: string;
   title: string;
-  points: number;                    // النقاط التحفيزيّة عند الإنجاز
-  assignedBy?: string;               // مُعرِّف مَن رصد المهمّة (مشرف/أمير)
+  points: number;                    // موجبة = نشاط، سالبة = خصم
+  assignedBy?: string;               // مُعرِّف مَن رصد (مشرف/أمير)
   visible: boolean;                  // إظهار/إخفاء عن الطالب
-  dueDate?: string;                  // موعدٌ نهائيّ اختياري
-  done: boolean;
+  dueDate?: string;                  // موعدٌ نهائيّ اختياري (توافقٌ قديم)
+  done: boolean;                     // اعتُمِد الإنجاز فتُحتسَب النقاط
+  kind: ActivityKind;                // نشاط | خصم
+  batchId?: string;                  // يجمع صفوف الرصد الجماعيّ معاً
+  scopeLabel?: string;               // وصفُ النطاق للعرض (أسرة/الكل/طالب)
+  expiresAt?: string;                // إغلاقٌ تلقائيّ للنشاط المؤقّت (ISO) — غيابه = مفتوح
   createdAt: string;
 };
 

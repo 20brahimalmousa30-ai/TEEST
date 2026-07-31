@@ -13,6 +13,7 @@ import { useStore } from "@/lib/store/StoreProvider";
 import { LoadErrorBanner } from "@/components/LoadErrorBanner";
 import { VersionWatcher } from "@/components/VersionWatcher";
 import { sar } from "@/lib/format";
+import { studentNet, isActivityClosed } from "@/lib/points";
 
 export default function MePage() {
   const { session, ready } = useSession();
@@ -88,21 +89,27 @@ export default function MePage() {
 
   const team = teams.find(t => t.id === student.teamId);
   const paidPct = Math.round((student.paidAmount / student.totalAmount) * 100);
-  // مهامّي: اللقطة الخاصّة بالمستفيد تُحمّل مهامّه المرئيّة فقط.
+  // أنشطتي: اللقطة الخاصّة بالمستفيد تُحمّل ما يخصّه (وما يخصّ أسرته) المرئيّ فقط.
   const myTasks = studentTasks.filter(t => t.studentId === student.id);
-  const myPoints = myTasks.filter(t => t.done).reduce((sum, t) => sum + t.points, 0);
+  const myPoints = studentNet(studentTasks, student.id);
 
   return (
     <main className="min-h-screen">
       <header className="border-b border-line bg-bg-raised">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
           <Logo size={72} priority />
-          <button
-            onClick={async () => { await clearSession(); announceSessionChange(); router.push("/login"); }}
-            className="rounded border border-line-strong px-3 py-1.5 text-[12px] text-text-2 hover:border-accent hover:text-text"
-          >
-            خروج
-          </button>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5 rounded-full border border-accent-warm/40 bg-accent-warm/10 px-3 py-1.5 text-[13px] text-accent-warm-2">
+              <span className="text-[11px] text-text-3">نقاطك</span>
+              <span className="num font-semibold text-text">{myPoints}</span>
+            </span>
+            <button
+              onClick={async () => { await clearSession(); announceSessionChange(); router.push("/login"); }}
+              className="rounded border border-line-strong px-3 py-1.5 text-[12px] text-text-2 hover:border-accent hover:text-text"
+            >
+              خروج
+            </button>
+          </div>
         </div>
       </header>
 
@@ -124,7 +131,7 @@ export default function MePage() {
 
         <section className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <KpiCard label="أسرتك"    value={team?.name ?? "—"} sub={`المشرف ينتظر رسالتك`} />
-          <KpiCard label="نقاطك"    value={student.points} sub={`ضمن ${team?.name ?? "—"}`} variant="ok" />
+          <KpiCard label="نقاطك"    value={myPoints} sub={`ضمن ${team?.name ?? "—"}`} variant="ok" />
           <KpiCard label="حضورك"    value={`${student.attendance}%`} variant={student.attendance >= 90 ? "ok" : "warn"} />
           <KpiCard label="حالة سدادك" value={student.paymentStatus === "PAID" ? "مكتمل" : student.paymentStatus === "PARTIAL" ? "جزئي" : "معلّق"}
             variant={student.paymentStatus === "PAID" ? "ok" : student.paymentStatus === "PARTIAL" ? "warn" : "critical"} />
@@ -201,29 +208,38 @@ export default function MePage() {
         </div>
 
         <section className="mt-6">
-          <Card title="مهامي" action={<span className="text-[11.5px] text-text-3">{myTasks.filter(t => !t.done).length} مفتوحة · {myPoints} نقطة</span>}>
+          <Card title="أنشطتي ونقاطي" action={<span className="num text-[11.5px] text-text-3">{myPoints} نقطة</span>}>
             {myTasks.length === 0 ? (
-              <p className="py-4 text-center text-[13px] text-text-3">لا مهامّ مرصودة لك بعد — تابع مشرفك.</p>
+              <p className="py-4 text-center text-[13px] text-text-3">لا شيء مرصودٌ لك بعد — تابع مشرفك.</p>
             ) : (
               <ul className="grid gap-2">
-                {myTasks.map(t => (
-                  <li key={t.id} className="flex items-start gap-3 rounded border border-line px-3 py-2.5">
-                    <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] ${t.done ? "bg-ok text-[#F4EEE2]" : "border border-line-strong text-text-3"}`}>
-                      {t.done ? "✓" : ""}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className={`text-[13.5px] ${t.done ? "text-text-3 line-through" : "text-text"}`}>{t.title}</div>
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <Pill variant={t.done ? "ok" : "info"}>{t.points} نقطة</Pill>
-                        {t.dueDate && <span className="num text-[11px] text-text-3">حتى {t.dueDate}</span>}
-                        {t.done && <span className="text-[11px] text-ok">تم الإنجاز</span>}
+                {myTasks.map(t => {
+                  const isDed = t.kind === "deduction";
+                  const timed = !isDed && !!t.expiresAt;
+                  const closed = isActivityClosed(t);
+                  return (
+                    <li key={t.id} className="flex items-start gap-3 rounded border border-line px-3 py-2.5">
+                      <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] ${isDed ? "bg-critical text-[#F4EEE2]" : t.done ? "bg-ok text-[#F4EEE2]" : closed ? "border border-line-strong text-text-3" : "border border-accent-warm text-accent-warm-2"}`}>
+                        {isDed ? "−" : t.done ? "✓" : ""}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13.5px] text-text">{t.title}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <Pill variant={isDed ? "critical" : t.done ? "ok" : "info"}>{t.points > 0 ? `+${t.points}` : t.points} نقطة</Pill>
+                          {isDed && <span className="text-[11px] text-critical">خصم</span>}
+                          {timed && !t.done && !closed && t.expiresAt && (
+                            <span className="num text-[11px] text-accent-warm-2">حتى {new Date(t.expiresAt).toLocaleString("ar")}</span>
+                          )}
+                          {timed && closed && !t.done && <span className="text-[11px] text-text-3">انتهى الوقت</span>}
+                          {!isDed && t.done && <span className="text-[11px] text-ok">محتسب</span>}
+                        </div>
                       </div>
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
             )}
-            <p className="mt-4 text-[12px] text-text-3">هذه مهامّك التحفيزيّة — يعتمد مشرفك إنجازها فتُضاف نقاطها إلى رصيدك.</p>
+            <p className="mt-4 text-[12px] text-text-3">هذه أنشطتُك وخصوماتُك — يرصدها مشرفك أو الأمير، وتنعكس على رصيد نقاطك.</p>
           </Card>
         </section>
 

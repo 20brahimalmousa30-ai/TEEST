@@ -92,6 +92,10 @@ export const rowToStudentTask = (r: any): StudentTask => ({
   visible: r.visible ?? true,
   dueDate: r.due_date ?? undefined,
   done: r.done ?? false,
+  kind: (r.kind ?? "activity") as StudentTask["kind"],
+  batchId: r.batch_id ?? undefined,
+  scopeLabel: r.scope_label ?? undefined,
+  expiresAt: r.expires_at ?? undefined,
   createdAt: r.created_at ?? "",
 });
 

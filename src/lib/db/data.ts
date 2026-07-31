@@ -734,25 +734,39 @@ export async function dbDeleteCommitteeTask(id: string) {
   await getSupabase().from("committee_tasks").delete().eq("id", id);
 }
 
-/* ─────────── المهامّ التحفيزيّة/الذاتيّة للطلاب (البند ١ و٣) ───────────
- *  يرصدها أيُّ عضوِ طاقم (أمير/نائب/مشرف) لطالبٍ بعينه؛ ولكلّ مهمّةٍ نقاطٌ محفِّزة.
- *  يراها الطالب في «مهامي» — المرئيّة منها فقط (visible=true). الحُرّاس خادميّون. */
-export async function dbAddStudentTask(
-  studentId: string, title: string, points: number, dueDate?: string
-) {
+/* ─────────── الأنشطة والخصومات للطلاب (البند ١ و٣) ───────────
+ *  يرصدها أيُّ عضوِ طاقم (أمير/نائب/مشرف): نشاطٌ (نقاطٌ موجبة) أو خصمٌ (سالبة)،
+ *  لطالبٍ بعينه أو لأسرةٍ/أُسَرٍ أو لكلّ الطلاب — الرصدُ الجماعيّ يُنشئ صفّاً لكلّ
+ *  طالبٍ بنفس batch_id. يراها الطالب في صفحته. الحُرّاس خادميّون. */
+export async function dbAddActivity(input: {
+  studentIds: string[]; title: string; points: number;
+  kind: "activity" | "deduction"; scopeLabel?: string;
+  expiresAt?: string; done: boolean; batchId?: string;
+}) {
   const s = await requireStaff();
-  const t = title.trim();
-  if (!studentId || !t) return;
-  await getSupabase().from("student_tasks").insert({
+  const t = input.title.trim();
+  const ids = [...new Set(input.studentIds)].filter(Boolean);
+  if (!t || ids.length === 0) return;
+  const pts = Math.trunc(input.points || 0);
+  const signed = input.kind === "deduction" ? -Math.abs(pts) : Math.abs(pts);
+  const batchId = input.batchId ?? (ids.length > 1 ? uid("batch") : undefined);
+  const assignedBy = s.supervisorId ?? s.phone ?? null;
+  const rows = ids.map(studentId => ({
     id: uid("stask"), student_id: studentId, title: t,
-    points: Math.max(0, Math.floor(points || 0)),
-    assigned_by: s.supervisorId ?? s.phone ?? null,
-    visible: true, due_date: dueDate || null, done: false,
-  });
+    points: signed, assigned_by: assignedBy,
+    visible: true, done: input.done,
+    kind: input.kind, batch_id: batchId ?? null,
+    scope_label: input.scopeLabel ?? null, expires_at: input.expiresAt ?? null,
+  }));
+  await getSupabase().from("student_tasks").insert(rows);
 }
 export async function dbToggleStudentTask(id: string, done: boolean) {
   await requireStaff();
   await getSupabase().from("student_tasks").update({ done }).eq("id", id);
+}
+export async function dbToggleActivityBatch(batchId: string, done: boolean) {
+  await requireStaff();
+  await getSupabase().from("student_tasks").update({ done }).eq("batch_id", batchId);
 }
 export async function dbSetStudentTaskVisible(id: string, visible: boolean) {
   await requireStaff();
@@ -761,6 +775,10 @@ export async function dbSetStudentTaskVisible(id: string, visible: boolean) {
 export async function dbDeleteStudentTask(id: string) {
   await requireStaff();
   await getSupabase().from("student_tasks").delete().eq("id", id);
+}
+export async function dbDeleteActivityBatch(batchId: string) {
+  await requireStaff();
+  await getSupabase().from("student_tasks").delete().eq("batch_id", batchId);
 }
 
 /* ─────────── قيمة الرسوم الافتراضيّة (البند ٢) ───────────

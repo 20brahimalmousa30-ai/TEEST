@@ -1,6 +1,6 @@
 "use client";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import type { Team, Student, Supervisor, Committee, CommitteeTask, StudentTask, Invoice, PaymentStatus, OcrExtraction, ConditionsPolicy } from "@/lib/mock/types";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import type { Team, Student, Supervisor, Committee, CommitteeTask, StudentTask, ActivityKind, ActivityTarget, Invoice, PaymentStatus, OcrExtraction, ConditionsPolicy } from "@/lib/mock/types";
 import {
   loadAllData,
   dbAddTeam, dbUpdateTeam, dbDeleteTeam,
@@ -11,7 +11,7 @@ import {
   dbAddCommittee, dbUpdateCommittee, dbDeleteCommittee,
   dbSetTeamBudget, dbSetCommitteeBudget,
   dbAddCommitteeTask, dbToggleCommitteeTask, dbDeleteCommitteeTask,
-  dbAddStudentTask, dbToggleStudentTask, dbSetStudentTaskVisible, dbDeleteStudentTask,
+  dbAddActivity, dbToggleStudentTask, dbToggleActivityBatch, dbSetStudentTaskVisible, dbDeleteStudentTask, dbDeleteActivityBatch,
   dbSetDefaultFee,
   dbAddInvoice, dbAddInvoices, dbApproveInvoice, dbRejectInvoice, dbDeleteInvoice, dbRestoreInvoice, dbAnalyzeInvoice,
   dbToggleRegField, dbReorderRegField, dbAddRegField, dbUpdateRegField, dbRemoveRegField, dbSetRegOpen,
@@ -164,11 +164,13 @@ export type StoreActions = {
   addCommitteeTask(committeeId: string, title: string, assigneeId?: string): void;
   toggleCommitteeTask(id: string, done: boolean): void;
   deleteCommitteeTask(id: string): void;
-  // Student motivational/personal tasks (البند ١ و٣) — staff assigns to a student
-  addStudentTask(studentId: string, title: string, points: number, dueDate?: string): void;
+  // Student activities & deductions (البند ١ و٣) — staff records for a student / أسرة / all
+  addActivity(input: { target: ActivityTarget; title: string; points: number; kind: ActivityKind; expiresAt?: string }): void;
   toggleStudentTask(id: string, done: boolean): void;
+  toggleActivityBatch(batchId: string, done: boolean): void;
   setStudentTaskVisible(id: string, visible: boolean): void;
   deleteStudentTask(id: string): void;
+  deleteActivityBatch(batchId: string): void;
   // Default fee (البند ٢) — Prince only; applies to all students
   setDefaultFee(amount: number): void;
   // Invoices
@@ -245,6 +247,9 @@ function secureCode(len = 8): string {
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<State>(initialState);
+  // مرآةٌ للحالة الحاليّة تُقرأ داخل الإجراءات المُمَذكَرة (useMemo) دون إعادة إنشائها.
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const [hydrated, setHydrated] = useState(false);
   // فشل جلبِ اللقطة (شبكة/إجراء خادمٍ قديم بعد النشر). نُظهره صراحةً حتى لا تبدو
   // القائمة الفارغة وكأنّ البيانات حُذفت — فيُميّز المستخدم «تعذّر التحميل» عن «لا بيانات».
@@ -488,19 +493,46 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       persist(() => dbDeleteCommitteeTask(id));
     },
 
-    addStudentTask(studentId, title, points, dueDate) {
+    addActivity({ target, title, points, kind, expiresAt }) {
       const t = title.trim();
-      if (!studentId || !t) return;
-      const pts = Math.max(0, Math.floor(points || 0));
-      update(s => ({ studentTasks: [
-        { id: uid("stask"), studentId, title: t, points: pts, visible: true, dueDate: dueDate || undefined, done: false, createdAt: new Date().toISOString() },
-        ...s.studentTasks,
-      ] }));
-      persist(() => dbAddStudentTask(studentId, t, pts, dueDate));
+      if (!t) return;
+      const st = stateRef.current;
+      const approved = st.students.filter(x => (x.approvalStatus ?? "APPROVED") === "APPROVED");
+      // اشتقاق الطلاب المستهدفين ووصفِ النطاق حسب نوع الرصد.
+      let ids: string[] = [];
+      let scopeLabel = "";
+      if (target.kind === "student") {
+        ids = approved.filter(x => x.id === target.studentId).map(x => x.id);
+        scopeLabel = approved.find(x => x.id === target.studentId)?.name ?? "";
+      } else if (target.kind === "teams") {
+        const set = new Set(target.teamIds);
+        ids = approved.filter(x => set.has(x.teamId)).map(x => x.id);
+        scopeLabel = st.teams.filter(tm => set.has(tm.id)).map(tm => `أسرة ${tm.name}`).join("، ");
+      } else {
+        ids = approved.map(x => x.id);
+        scopeLabel = "كل الطلاب";
+      }
+      if (ids.length === 0) return;
+      const pts = Math.trunc(points || 0);
+      const signed = kind === "deduction" ? -Math.abs(pts) : Math.abs(pts);
+      // الخصمُ والنشاطُ المفتوح يُحتسبان فوراً (done=true)؛ النشاطُ المؤقّت ينتظر الاعتماد.
+      const done = kind === "deduction" ? true : !expiresAt;
+      const batchId = ids.length > 1 ? uid("batch") : undefined;
+      const now = new Date().toISOString();
+      const rows: StudentTask[] = ids.map(studentId => ({
+        id: uid("stask"), studentId, title: t, points: signed, visible: true,
+        done, kind, batchId, scopeLabel: scopeLabel || undefined, expiresAt: expiresAt || undefined, createdAt: now,
+      }));
+      update(s => ({ studentTasks: [...rows, ...s.studentTasks] }));
+      persist(() => dbAddActivity({ studentIds: ids, title: t, points: signed, kind, scopeLabel: scopeLabel || undefined, expiresAt, done, batchId }));
     },
     toggleStudentTask(id, done) {
       update(s => ({ studentTasks: s.studentTasks.map(t => t.id === id ? { ...t, done } : t) }));
       persist(() => dbToggleStudentTask(id, done));
+    },
+    toggleActivityBatch(batchId, done) {
+      update(s => ({ studentTasks: s.studentTasks.map(t => t.batchId === batchId ? { ...t, done } : t) }));
+      persist(() => dbToggleActivityBatch(batchId, done));
     },
     setStudentTaskVisible(id, visible) {
       update(s => ({ studentTasks: s.studentTasks.map(t => t.id === id ? { ...t, visible } : t) }));
@@ -509,6 +541,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     deleteStudentTask(id) {
       update(s => ({ studentTasks: s.studentTasks.filter(t => t.id !== id) }));
       persist(() => dbDeleteStudentTask(id));
+    },
+    deleteActivityBatch(batchId) {
+      update(s => ({ studentTasks: s.studentTasks.filter(t => t.batchId !== batchId) }));
+      persist(() => dbDeleteActivityBatch(batchId));
     },
     setDefaultFee(amount) {
       const fee = Math.max(0, Math.round(amount));
