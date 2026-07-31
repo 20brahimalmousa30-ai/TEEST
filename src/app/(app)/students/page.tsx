@@ -6,7 +6,7 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
+import { Modal, Confirm } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Field";
 import { useSession } from "@/lib/auth/session";
 import { useStore } from "@/lib/store/StoreProvider";
@@ -24,7 +24,7 @@ const isWaiting  = (s: Student) => s.approvalStatus === "PENDING";
 export default function StudentsPage() {
   useEffect(() => { document.title = "الشباب — معالي محافظة بلّسمر"; }, []);
   const { session } = useSession();
-  const { students, teams, supervisors, addStudent, approveStudent, rejectStudent, reviewReceipt, hydrated, loadError } = useStore();
+  const { students, teams, supervisors, trashStudents, restoreStudent, purgeStudent, addStudent, approveStudent, rejectStudent, reviewReceipt, hydrated, loadError } = useStore();
 
   // Only PRINCE / DEPUTY_PRINCE can approve/reject — and export the PDF report
   const canApprove = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
@@ -37,6 +37,8 @@ export default function StudentsPage() {
   const [openWaitlist, setOpenWaitlist] = useState(false);
   const [openUnpaid, setOpenUnpaid] = useState(false);
   const [openReceipts, setOpenReceipts] = useState(false);
+  const [openTrash, setOpenTrash] = useState(false);
+  const [purgeFor, setPurgeFor] = useState<Student | null>(null);
   const [viewReceipt, setViewReceipt] = useState<Student | null>(null);
   //  المبلغ الذي يتحقّق منه الأمير يدويّاً عند اعتماد الإيصال (افتراضاً الإجماليّ الكامل).
   const [approveAmt, setApproveAmt] = useState(0);
@@ -324,6 +326,41 @@ export default function StudentsPage() {
         </details>
       )}
 
+      {/* ── سلة المحذوفات: حسابات حُذفت — تبقى ١٠ ساعات ثمّ تُحذَف نهائياً ── */}
+      {canApprove && trashStudents.length > 0 && (
+        <details open={openTrash} onToggle={e => setOpenTrash((e.target as HTMLDetailsElement).open)}
+          className="group mb-6 rounded-md border border-critical/40 bg-critical/[.05]">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3">
+            <span className="flex items-center gap-3">
+              <span className="grid h-8 w-8 place-items-center rounded-full bg-critical/15 text-[13px] text-critical">🗑</span>
+              <span>
+                <span className="text-[14px] font-medium text-text">سلة المحذوفات</span>
+                <span className="ms-2 num text-[12px] text-text-3">{trashStudents.length}</span>
+              </span>
+            </span>
+            <span className="text-[12px] text-text-3 transition-transform group-open:rotate-180">▾</span>
+          </summary>
+          <div className="border-t border-critical/30">
+            <p className="px-5 py-2 text-[11.5px] text-text-3">تبقى الحسابات هنا ١٠ ساعات يمكن خلالها استعادتها، ثمّ تُحذَف نهائياً تلقائياً. الاستعادة تُرجِعها بكلّ بياناتها.</p>
+            <ul className="divide-y divide-line">
+              {trashStudents.map(s => {
+                const team = teams.find(t => t.id === s.teamId);
+                return (
+                  <li key={s.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-5 py-3">
+                    <div>
+                      <div className="text-[13.5px] text-text">{s.name}</div>
+                      <div className="num text-[11.5px] text-text-3">{team ? teamLabel(team.name) : "بلا أسرة"} · {trashRemaining(s.deletedAt)}</div>
+                    </div>
+                    <button onClick={() => restoreStudent(s.id)} className="rounded border border-ok/40 bg-ok/10 px-3 py-1 text-[12px] text-ok hover:bg-ok/20">استعادة</button>
+                    <button onClick={() => setPurgeFor(s)} className="rounded border border-critical/40 bg-critical/10 px-3 py-1 text-[12px] text-critical hover:bg-critical/20">حذف نهائيّ</button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </details>
+      )}
+
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
           type="search"
@@ -520,7 +557,28 @@ export default function StudentsPage() {
           </div>
         )}
       </Modal>
+
+      {/* تأكيد الحذف النهائيّ من سلة المحذوفات */}
+      <Confirm
+        open={purgeFor !== null}
+        onClose={() => setPurgeFor(null)}
+        onConfirm={() => { if (purgeFor) purgeStudent(purgeFor.id); setPurgeFor(null); }}
+        title={purgeFor ? `حذف ${purgeFor.name} نهائياً؟` : ""}
+        message="سيُحذف الحساب وكلّ بياناته فوراً بلا رجعة. إن سجّل مجدّداً بدأ حساباً جديداً بلا بياناتٍ سابقة."
+        confirmLabel="نعم، احذف نهائياً"
+        danger
+      />
     </div>
   );
+}
+
+/** يصوغ الوقت المتبقّي قبل الحذف النهائيّ التلقائيّ (نافذة ١٠ ساعات). */
+function trashRemaining(deletedAt?: string): string {
+  if (!deletedAt) return "بانتظار الحذف";
+  const ms = Date.parse(deletedAt) + 10 * 60 * 60 * 1000 - Date.now();
+  if (ms <= 0) return "سيُحذف نهائياً قريباً";
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  return h > 0 ? `يُحذف نهائياً بعد ${h} س ${m} د` : `يُحذف نهائياً بعد ${m} د`;
 }
 

@@ -425,7 +425,7 @@ export default function StudentDetail() {
         onClose={() => setDelOpen(false)}
         onConfirm={() => { deleteStudent(s!.id); router.push("/students"); }}
         title={`إخراج ${s.name} من الرحلة؟`}
-        message="سيُحذف الشاب وكلّ نقاطه وسجلّات حضوره. هذا الإجراء لا يمكن التراجع عنه في النسخة التجريبية."
+        message="سيُنقَل إلى سلة المحذوفات ويبقى فيها ١٠ ساعات يمكن خلالها استعادته، ثمّ يُحذَف نهائياً مع نقاطه وسجلّاته. وإن سجّل مجدّداً بدأ حساباً جديداً بلا بياناتٍ سابقة."
         confirmLabel="نعم، أخرِجه"
         danger
       />

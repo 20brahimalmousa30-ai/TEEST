@@ -112,6 +112,7 @@ export type Student = {
   receiptAmount?: number;            // المبلغ المُصرَّح به في الإيصال
   receiptSubmittedAt?: string;       // ISO date لرفع الإيصال
   regAnswers?: Record<string, string>; // إجابات حقول التسجيل المخصّصة (مفتاح الحقل → الإجابة)
+  deletedAt?: string;                // ISO date — وسمُ سلة المحذوفات (غيابه = نشِط)؛ يُحذَف نهائياً بعد ١٠ ساعات
 };
 
 /** بندٌ واحدٌ في الفاتورة (وصف/كميّة/سعر/إجمالي). */

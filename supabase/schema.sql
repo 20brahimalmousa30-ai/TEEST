@@ -562,3 +562,12 @@ create table if not exists fee_history (
 -- ═══════════════════════════════════════════════════════════════════════
 alter table supervisors add column if not exists photo_data_url text;
 alter table supervisors add column if not exists specialty      text;
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  سلة المحذوفات للطلاب: عند حذف حسابٍ من الأمير/نائبه يُوسَم بـ deleted_at
+--  (بدل الحذف الفوري)، فيبقى في السلة عشر ساعات ثم يُحذَف نهائياً تلقائياً
+--  (تنظيفٌ كسولٌ في loadAllData). إعادة التسجيل بعدها = حسابٌ جديدٌ بلا بياناتٍ سابقة.
+--  ⚠️ شغّل هذا في Supabase.
+-- ═══════════════════════════════════════════════════════════════════════
+alter table students add column if not exists deleted_at timestamptz;
+create index if not exists idx_students_deleted_at on students (deleted_at);

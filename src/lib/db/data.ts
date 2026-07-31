@@ -33,7 +33,7 @@ const ADMIN = ["PRINCE", "DEPUTY_PRINCE"];
 const STUDENT_LEAN_COLUMNS =
   "id,name,national_id_masked,national_id,phone,grade,section,team_id,payment_status," +
   "paid_amount,total_amount,points,emergency_contact,emergency_phone,attendance," +
-  "approval_status,registered_at,access_code,receipt_status,receipt_amount,receipt_submitted_at,reg_answers";
+  "approval_status,registered_at,access_code,receipt_status,receipt_amount,receipt_submitted_at,reg_answers,deleted_at";
 
 /** كلُّ أعمدة الفواتير **ما عدا** image_data_url (base64 ثقيل يُجلَب عند الطلب
  *  عبر /api/invoices/[id]/image). has_image علمٌ خفيفٌ بديل. */
@@ -197,7 +197,7 @@ export async function loadAllData(): Promise<State> {
   const base: State = {
     teams: [], students: [], supervisors: [], committees: [], committeeTasks: [],
     studentTasks: [],
-    invoices: [], trashInvoices: [], attendance: {},
+    invoices: [], trashInvoices: [], trashStudents: [], attendance: {},
     ...publicState,
   };
 
@@ -215,6 +215,8 @@ export async function loadAllData(): Promise<State> {
         .eq("student_id", session.studentId).eq("visible", true)
         .order("created_at", { ascending: false }),
     ]);
+    // حسابٌ في سلة المحذوفات = محذوفٌ فعلياً في نظر المستفيد؛ لا بيانات له.
+    if (meRow.data?.deleted_at) return base;
     return {
       ...base,
       teams: (teams.data ?? []).map(rowToTeam),
@@ -225,6 +227,9 @@ export async function loadAllData(): Promise<State> {
 
   // غيرُ الطاقم (دورٌ غير معروف): لا بيانات شخصيّة.
   if (!STAFF.includes(session.role)) return base;
+
+  // تنظيفٌ كسول: يُحذَف نهائياً كلُّ طالبٍ مضى على وجوده في السلة أكثر من ١٠ ساعات.
+  await purgeExpiredStudents(db);
 
   // الطاقم: لقطةٌ كاملة — لكن **دون** أعمدة base64 الثقيلة
   // (photo_data_url / receipt_data_url). كانت هذه الأعمدة تنقل ميغابايتات
@@ -273,14 +278,18 @@ export async function loadAllData(): Promise<State> {
   // نُجرّده من لقطة المشرفين هنا (لا في الواجهة فقط) حتّى لا يصل لأجهزتهم أصلاً.
   const isAdmin = ADMIN.includes(session.role);
 
+  // فصلُ الطلاب النشطين عن سلة المحذوفات (deleted_at مضبوط).
+  const allStudents = (students.data ?? []).map(r => {
+    const st = rowToStudent(r);
+    if (!isAdmin) st.nationalId = undefined;
+    return st;
+  });
+
   return {
     ...base,
     teams:          (teams.data ?? []).map(rowToTeam),
-    students:       (students.data ?? []).map(r => {
-      const st = rowToStudent(r);
-      if (!isAdmin) st.nationalId = undefined;
-      return st;
-    }),
+    students:       allStudents.filter(s => !s.deletedAt),
+    trashStudents:  allStudents.filter(s => s.deletedAt),
     supervisors:    (supervisors.data ?? []).map(r => {
       const sup = {
         ...rowToSupervisor(r),
@@ -538,12 +547,51 @@ export async function dbSetStudentPhoto(id: string, dataUrl: string) {
   assertValidImage(dataUrl);
   await getSupabase().from("students").update({ photo_data_url: dataUrl }).eq("id", id);
 }
+/** نافذةُ بقاء الحساب في سلة المحذوفات قبل الحذف النهائيّ التلقائيّ (١٠ ساعات). */
+export const STUDENT_TRASH_WINDOW_MS = 10 * 60 * 60 * 1000;
+
+/** حذفٌ ناعم: يُوسَم الحساب بـ deleted_at فيُنقَل لسلة المحذوفات (١٠ ساعات)،
+ *  ويُنقَص عدّاد أسرته (لأنّه لم يَعُد نشِطاً). يعيده dbRestoreStudent، أو يُحذَف
+ *  نهائياً تلقائياً بعد النافذة (purgeExpiredStudents) أو يدوياً (dbPurgeStudent). */
 export async function dbDeleteStudent(id: string) {
   await requirePermission("students");
   const db = getSupabase();
-  const { data } = await db.from("students").select("team_id").eq("id", id).single();
-  await db.from("students").delete().eq("id", id);
+  const { data } = await db.from("students").select("team_id, deleted_at").eq("id", id).single();
+  if (data?.deleted_at) return; // مُحذوفٌ مسبقاً
+  await db.from("students").update({ deleted_at: new Date().toISOString() }).eq("id", id);
   if (data?.team_id) await bumpTeamCount(data.team_id, -1);
+}
+
+/** استعادةٌ من سلة المحذوفات: يُلغى وسمُ deleted_at ويُعاد عدّاد أسرته. */
+export async function dbRestoreStudent(id: string) {
+  await requirePermission("students");
+  const db = getSupabase();
+  const { data } = await db.from("students").select("team_id, deleted_at").eq("id", id).single();
+  if (!data?.deleted_at) return; // ليس في السلة
+  await db.from("students").update({ deleted_at: null }).eq("id", id);
+  if (data?.team_id) await bumpTeamCount(data.team_id, 1);
+}
+
+/** حذفٌ نهائيّ لحسابٍ واحد (مع بياناته المرتبطة): أنشطته وحساب دخوله.
+ *  لا يمسّ عدّاد الأسرة (نُقِص عند الحذف الناعم). */
+async function hardDeleteStudents(db: ReturnType<typeof getSupabase>, ids: string[]) {
+  if (!ids.length) return;
+  await db.from("student_tasks").delete().in("student_id", ids);
+  await db.from("profiles").delete().in("student_id", ids);
+  await db.from("students").delete().in("id", ids);
+}
+
+/** حذفٌ نهائيّ فوريّ لحسابٍ من السلة (يستدعيه الأمير/نائبه). */
+export async function dbPurgeStudent(id: string) {
+  await requirePermission("students");
+  await hardDeleteStudents(getSupabase(), [id]);
+}
+
+/** تنظيفٌ كسول: حذفٌ نهائيّ لكلّ حسابٍ مضى على وجوده في السلة أكثر من النافذة. */
+async function purgeExpiredStudents(db: ReturnType<typeof getSupabase>) {
+  const cutoff = new Date(Date.now() - STUDENT_TRASH_WINDOW_MS).toISOString();
+  const { data } = await db.from("students").select("id").not("deleted_at", "is", null).lt("deleted_at", cutoff);
+  await hardDeleteStudents(db, (data ?? []).map(r => r.id as string));
 }
 export async function dbMoveStudent(id: string, newTeamId: string) {
   await requirePermission("students");

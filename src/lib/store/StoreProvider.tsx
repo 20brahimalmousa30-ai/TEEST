@@ -5,7 +5,7 @@ import {
   loadAllData,
   dbAddTeam, dbUpdateTeam, dbDeleteTeam,
   dbAddStudent, dbRegisterStudent, dbApproveStudent, dbRejectStudent,
-  dbUpdateStudent, dbDeleteStudent, dbMoveStudent, dbSetPayment, dbSetStudentPhoto,
+  dbUpdateStudent, dbDeleteStudent, dbRestoreStudent, dbPurgeStudent, dbMoveStudent, dbSetPayment, dbSetStudentPhoto,
   dbSubmitReceipt, dbReviewReceipt,
   dbAddSupervisor, dbUpdateSupervisor, dbDeleteSupervisor, dbImportSupervisors,
   dbAddCommittee, dbUpdateCommittee, dbDeleteCommittee,
@@ -66,6 +66,8 @@ export type State = {
   attendance:   Record<string, boolean[]>;
   /** invoices moved to trash */
   trashInvoices: Invoice[];
+  /** طلابٌ في سلة المحذوفات (deleted_at مضبوط) — تُحذَف نهائياً بعد ١٠ ساعات */
+  trashStudents: Student[];
   /** site-wide logo visibility, controlled by the Prince (settings) */
   logoDisplayMode: LogoDisplayMode;
   /** جُمل تحفيزيّة كاملة (شاشة الانتظار) — يُحرّرها الأمير */
@@ -108,6 +110,7 @@ const initialState: State = {
   regOpen:      true,
   attendance:   {},
   trashInvoices: [],
+  trashStudents: [],
   logoDisplayMode: "ANIMATED",
   motivations:   DEFAULT_MOTIVATIONS,
   tickerPhrases: DEFAULT_TICKER,
@@ -140,7 +143,12 @@ export type StoreActions = {
   approveStudent(id: string, teamId: string): void;
   rejectStudent(id: string): void;
   updateStudent(id: string, patch: Partial<Student>): void;
+  /** حذفٌ ناعم: نقلٌ لسلة المحذوفات (١٠ ساعات ثم حذفٌ نهائيّ تلقائيّ) */
   deleteStudent(id: string): void;
+  /** استعادةٌ من سلة المحذوفات */
+  restoreStudent(id: string): void;
+  /** حذفٌ نهائيّ فوريّ من سلة المحذوفات */
+  purgeStudent(id: string): void;
   moveStudent(id: string, newTeamId: string): void;
   setPayment(id: string, status: PaymentStatus, paid: number): void;
   setStudentPhoto(id: string, dataUrl: string): void;
@@ -378,14 +386,36 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       persist(() => dbUpdateStudent(id, patch));
     },
     deleteStudent(id) {
+      // حذفٌ ناعم: نقلٌ لسلة المحذوفات مع إنقاص عدّاد الأسرة (لم يَعُد نشِطاً).
       update(s => {
         const st = s.students.find(x => x.id === id);
+        if (!st) return {};
         return {
           students: s.students.filter(x => x.id !== id),
-          teams: st ? s.teams.map(t => t.id === st.teamId ? { ...t, studentCount: Math.max(0, t.studentCount - 1) } : t) : s.teams,
+          trashStudents: [{ ...st, deletedAt: new Date().toISOString() }, ...s.trashStudents],
+          teams: s.teams.map(t => t.id === st.teamId ? { ...t, studentCount: Math.max(0, t.studentCount - 1) } : t),
         };
       });
       persist(() => dbDeleteStudent(id));
+    },
+    restoreStudent(id) {
+      // استعادةٌ من السلة: يعود نشِطاً ويُعاد عدّاد أسرته.
+      update(s => {
+        const st = s.trashStudents.find(x => x.id === id);
+        if (!st) return {};
+        const { deletedAt: _drop, ...active } = st;
+        return {
+          trashStudents: s.trashStudents.filter(x => x.id !== id),
+          students: [active, ...s.students],
+          teams: s.teams.map(t => t.id === st.teamId ? { ...t, studentCount: t.studentCount + 1 } : t),
+        };
+      });
+      persist(() => dbRestoreStudent(id));
+    },
+    purgeStudent(id) {
+      // حذفٌ نهائيّ فوريّ من السلة (لا يمسّ عدّاد الأسرة — نُقِص عند الحذف الناعم).
+      update(s => ({ trashStudents: s.trashStudents.filter(x => x.id !== id) }));
+      persist(() => dbPurgeStudent(id));
     },
     moveStudent(id, newTeamId) {
       update(s => {
