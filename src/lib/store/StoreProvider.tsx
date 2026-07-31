@@ -139,7 +139,7 @@ export type StoreActions = {
   // Students
   addStudent(input: Omit<Student, "id" | "nationalIdMasked" | "points" | "attendance">): void;
   /** Public registration path — always creates an APPROVAL-pending record */
-  registerStudent(input: { name: string; phone: string; grade: string; section: Student["section"]; emergencyContact: string; emergencyPhone: string; photoDataUrl?: string; nationalId?: string; regAnswers?: Record<string, string> }): Student;
+  registerStudent(input: { name: string; phone: string; grade: string; section: Student["section"]; emergencyContact: string; emergencyPhone: string; photoDataUrl?: string; nationalId?: string; regAnswers?: Record<string, string> }): Promise<Student>;
   approveStudent(id: string, teamId: string): void;
   rejectStudent(id: string): void;
   updateStudent(id: string, patch: Partial<Student>): void;
@@ -333,33 +333,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }));
       persist(() => dbAddStudent(input));
     },
-    registerStudent(input) {
-      const id = uid("st");
-      const nationalId = (input.nationalId ?? "").trim();
-      const record: Student = {
-        id,
-        name: input.name,
-        phone: input.phone,
-        grade: input.grade,
-        section: input.section,
-        teamId: "",                       // unassigned until approval
-        paymentStatus: "PENDING",
-        paidAmount: 0,
-        totalAmount: 500,
-        emergencyContact: input.emergencyContact,
-        emergencyPhone: input.emergencyPhone,
-        nationalId: nationalId || undefined,
-        nationalIdMasked: nationalId ? "••••••" + nationalId.slice(-4) : "••••••" + Math.floor(1000 + Math.random() * 8999),
-        points: 0,
-        attendance: 100,
-        approvalStatus: "PENDING",
-        registeredAt: new Date().toISOString(),
-        photoDataUrl: input.photoDataUrl,
-        regAnswers: input.regAnswers && Object.keys(input.regAnswers).length ? input.regAnswers : undefined,
-      };
-      update(s => ({ students: [...s.students, record] }));
-      persist(() => dbRegisterStudent(input));
-      return record;
+    // مسارُ التسجيل العامّ: ننتظر تأكيد القاعدة (لا «أطلِق وانسَ») حتى لا تظهر
+    // شاشةُ النجاح ما لم يُحفَظ الطالب فعلاً. أيُّ إخفاقٍ (تجاوز حجم الطلب، صورة
+    // غير صالحة، خطأ شبكة) يُرمى للمتّصل ليعرضه للمستخدم بدل فقدان التسجيل صامتاً.
+    async registerStudent(input) {
+      const created = await dbRegisterStudent(input);
+      update(s => ({ students: [...s.students, created] }));
+      return created;
     },
     approveStudent(id, teamId) {
       const code = secureCode();

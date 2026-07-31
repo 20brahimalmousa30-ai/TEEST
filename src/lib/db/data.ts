@@ -547,8 +547,9 @@ export async function dbSetStudentPhoto(id: string, dataUrl: string) {
   assertValidImage(dataUrl);
   await getSupabase().from("students").update({ photo_data_url: dataUrl }).eq("id", id);
 }
-/** نافذةُ بقاء الحساب في سلة المحذوفات قبل الحذف النهائيّ التلقائيّ (١٠ ساعات). */
-export const STUDENT_TRASH_WINDOW_MS = 10 * 60 * 60 * 1000;
+// نافذةُ بقاء الحساب في سلة المحذوفات قبل الحذف النهائيّ التلقائيّ (١٠ ساعات).
+// ملاحظة: مِلفّ "use server" لا يسمح بتصدير غير الدوالّ اللاتزامنيّة، فنُبقيها محلّيّة.
+const STUDENT_TRASH_WINDOW_MS = 10 * 60 * 60 * 1000;
 
 /** حذفٌ ناعم: يُوسَم الحساب بـ deleted_at فيُنقَل لسلة المحذوفات (١٠ ساعات)،
  *  ويُنقَص عدّاد أسرته (لأنّه لم يَعُد نشِطاً). يعيده dbRestoreStudent، أو يُحذَف

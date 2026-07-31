@@ -26,6 +26,7 @@ export function RegisterExperience() {
   const [values, setValues] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
   const [submittedName, setSubmittedName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [motivIdx, setMotivIdx] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -53,8 +54,9 @@ export function RegisterExperience() {
       "radial-gradient(ellipse 90% 60% at 50% 110%, rgba(44,107,121,.14) 0%, transparent 60%)",
   }), []);
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting) return;
     setError("");
     // Validate every active + required recognized field.
     for (const f of activeFields) {
@@ -77,19 +79,28 @@ export function RegisterExperience() {
       if (v) regAnswers[f.key] = v;
     }
 
-    registerStudent({
-      name,
-      phone,
-      grade: get("grade") || grades[0],
-      section: (get("section") || sections[0]) as (typeof sections)[number],
-      emergencyContact: get("emergN") || "—",
-      emergencyPhone: get("emergP") || "—",
-      photoDataUrl: get("photo") || undefined,
-      nationalId: get("nid") || undefined,
-      regAnswers,
-    });
-    setSubmittedName(name);
-    setSubmitted(true);
+    setSubmitting(true);
+    try {
+      await registerStudent({
+        name,
+        phone,
+        grade: get("grade") || grades[0],
+        section: (get("section") || sections[0]) as (typeof sections)[number],
+        emergencyContact: get("emergN") || "—",
+        emergencyPhone: get("emergP") || "—",
+        photoDataUrl: get("photo") || undefined,
+        nationalId: get("nid") || undefined,
+        regAnswers,
+      });
+      setSubmittedName(name);
+      setSubmitted(true);
+    } catch (err) {
+      // لا نُظهر شاشةَ النجاح إن لم يُحفَظ الطالب — نعرض سببَ الإخفاق ليُعيد المحاولة.
+      const msg = err instanceof Error && err.message ? err.message : "تعذّر إرسال التسجيل. تحقّق من اتّصالك وحجم الصورة ثمّ أعد المحاولة.";
+      setError(msg);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   /* ---------- Registration closed ---------- */
@@ -197,7 +208,7 @@ export function RegisterExperience() {
 
           <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
             <p className="text-[12px] text-text-3">بالضغط على «إرسال» تدخل قائمة الانتظار مباشرةً.</p>
-            <Button type="submit" variant="primary">إرسال الطلب</Button>
+            <Button type="submit" variant="primary" disabled={submitting}>{submitting ? "جارٍ الإرسال…" : "إرسال الطلب"}</Button>
           </div>
         </form>
 
