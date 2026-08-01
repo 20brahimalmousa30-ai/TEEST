@@ -14,7 +14,7 @@ export default function LandingPage() {
           هذه <strong>نسخة عرض تجريبيّة</strong> من منصّة «معالي» — جميع البيانات وهميّة، ولا يوجد اتصال بقاعدة بيانات حقيقيّة.
         </span>
         <a
-          href="https://wa.me/966500000000"
+          href="https://wa.me/966559570829"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1 rounded px-3 py-1 text-[12px] font-semibold underline underline-offset-2 hover:opacity-90"
