@@ -5,6 +5,25 @@ import { TripMessage } from "@/components/TripMessage";
 export default function LandingPage() {
   return (
     <main className="relative min-h-screen overflow-hidden">
+      {/* ── شريط نسخة العرض التجريبي ─────────────────────────────── */}
+      <div
+        className="relative z-10 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 py-2 text-center text-[13px] font-medium"
+        style={{ background: "#B54A2E", color: "#F4EEE2" }}
+      >
+        <span>
+          هذه <strong>نسخة عرض تجريبيّة</strong> من منصّة «معالي» — جميع البيانات وهميّة، ولا يوجد اتصال بقاعدة بيانات حقيقيّة.
+        </span>
+        <a
+          href="https://wa.me/966500000000"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 rounded px-3 py-1 text-[12px] font-semibold underline underline-offset-2 hover:opacity-90"
+          style={{ background: "rgba(244,238,226,.18)" }}
+        >
+          للحصول على نسخةٍ حقيقيّة — تواصل معنا
+        </a>
+      </div>
+
       {/* ── Layer 1 · Aurora gradients ─────────────────────────────── */}
       <div
         aria-hidden

@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { useSession } from "@/lib/auth/session";
-import { changeCode } from "@/lib/auth/session-actions";
+import { changeCode } from "@/lib/auth/session-actions.demo";
 import { roleLabel } from "@/lib/auth/accounts";
 
 export default function AccountSettingsPage() {

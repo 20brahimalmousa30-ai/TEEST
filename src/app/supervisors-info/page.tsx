@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { loadPublicDirectory, type PublicCommittee, type PublicSupervisor } from "@/lib/db/data";
+import { loadPublicDirectory, type PublicCommittee, type PublicSupervisor } from "@/lib/db/data.demo";
 import { PublicHeader } from "@/components/PublicHeader";
 
 export default function SupervisorsInfoPage() {

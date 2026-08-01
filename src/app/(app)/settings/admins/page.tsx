@@ -9,8 +9,8 @@ import { Pill } from "@/components/ui/Pill";
 import { Confirm } from "@/components/ui/Modal";
 import { useSession, clearSession, announceSessionChange } from "@/lib/auth/session";
 import { roleLabel } from "@/lib/auth/accounts";
-import { listAdmins, addAdmin, transferOwnership, deleteAdmin } from "@/lib/auth/session-actions";
-import type { AdminRow } from "@/lib/db/data";
+import { listAdmins, addAdmin, transferOwnership, deleteAdmin } from "@/lib/auth/session-actions.demo";
+import type { AdminRow } from "@/lib/db/data.demo";
 
 export default function AdminsPage() {
   useEffect(() => { document.title = "إدارة الأمراء — معالي محافظة بلّسمر"; }, []);

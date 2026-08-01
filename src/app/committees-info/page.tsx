@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { loadPublicDirectory, type PublicCommittee } from "@/lib/db/data";
+import { loadPublicDirectory, type PublicCommittee } from "@/lib/db/data.demo";
 import { PublicHeader } from "@/components/PublicHeader";
 
 export default function CommitteesInfoPage() {

@@ -21,7 +21,7 @@ import {
   dbSetMotivations, dbSetTickerPhrases, dbSetTripMessage, dbSetPostRegisterNote,
   dbSetLogoUrl, dbSetScheduleUrl, dbSetBrandColors, dbSetPageMarquees,
   dbSetAssociationIdentity, dbSetConditionsPolicy,
-} from "@/lib/db/data";
+} from "@/lib/db/data.demo";
 import { motivations as DEFAULT_MOTIVATIONS, tickerPhrases as DEFAULT_TICKER } from "@/lib/motivations";
 import type { PageMarquee, PageMarqueeMap } from "@/lib/pageMarquees";
 import { evaluateConditions, passesPolicy } from "@/lib/ai/conditions";

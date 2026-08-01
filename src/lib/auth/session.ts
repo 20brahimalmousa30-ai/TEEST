@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { DbSession } from "@/lib/db/types";
-import { getSession, logout } from "./session-actions";
+import { getSession, logout } from "./session-actions.demo";
 
 /** شكل الجلسة كما تُقرأ في المتصفّح (مطابق لِما يُوقّع في الكوكي). */
 export type Session = DbSession;
