@@ -14,6 +14,8 @@ import { useStore } from "@/lib/store/StoreProvider";
 import { useSession } from "@/lib/auth/session";
 import { BudgetEditor } from "@/components/BudgetEditor";
 import { exportXlsx } from "@/lib/xlsx";
+import { useExportSelection } from "@/lib/useExportSelection";
+import { ExportSelectToggle, SelectCheckbox } from "@/components/ExportSelect";
 import { fileToDataUrl, extractDominantColor } from "@/lib/image";
 import { teamLabel } from "@/lib/format";
 import type { Student } from "@/lib/mock/types";
@@ -38,6 +40,12 @@ export default function TeamDetail() {
   const team = teams.find(t => t.id === params.id);
   useEffect(() => { document.title = team ? `${teamLabel(team.name)} — معالي محافظة بلّسمر` : "الأسر"; }, [team]);
 
+  const roster = team ? students.filter(s => s.teamId === team.id) : [];
+  const filtered = search
+    ? roster.filter(s => s.name.includes(search) || s.nationalIdMasked.includes(search) || s.phone.includes(search))
+    : roster;
+  const sel = useExportSelection(filtered);
+
   if (!team) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-16 text-center">
@@ -48,10 +56,6 @@ export default function TeamDetail() {
   }
 
   const sup = supervisors.find(s => s.id === team.supervisorId);
-  const roster = students.filter(s => s.teamId === team.id);
-  const filtered = search
-    ? roster.filter(s => s.name.includes(search) || s.nationalIdMasked.includes(search) || s.phone.includes(search))
-    : roster;
   const paid = roster.filter(s => s.paymentStatus === "PAID").length;
   const partial = roster.filter(s => s.paymentStatus === "PARTIAL").length;
   const pending = roster.filter(s => s.paymentStatus === "PENDING").length;
@@ -79,13 +83,14 @@ export default function TeamDetail() {
   }
 
   async function exportRoster() {
-    const rows = roster.map(s => [s.name, s.phone, s.grade, s.section, s.attendance, s.points,
+    const data = sel.exportRows;
+    const rows = data.map(s => [s.name, s.phone, s.grade, s.section, s.attendance, s.points,
       s.paymentStatus === "PAID" ? "مسدَّد" : s.paymentStatus === "PARTIAL" ? "جزئي" : "معلّق"]);
     await exportXlsx({
-      filename: `أسرة_${team!.name}_${roster.length}_عضو`,
+      filename: `أسرة_${team!.name}_${data.length}_عضو`,
       sheetName: teamLabel(team!.name),
       title: `${teamLabel(team!.name)} — معالي محافظة بلّسمر`,
-      subtitle: `${roster.length} عضو`,
+      subtitle: `${data.length} عضو`,
       columns: [
         { header: "الاسم", width: 26, align: "right" },
         { header: "الجوّال", width: 16, align: "center" },
@@ -143,13 +148,16 @@ export default function TeamDetail() {
         <Card
           title={`الأعضاء (${filtered.length}${filtered.length !== roster.length ? ` من ${roster.length}` : ""})`}
           action={
-            <input
-              type="search"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="ابحث باسمٍ أو رقم..."
-              className="rounded border border-line px-3 py-1.5 text-[13px]"
-            />
+            <div className="flex items-center gap-2">
+              <ExportSelectToggle sel={sel} />
+              <input
+                type="search"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="ابحث باسمٍ أو رقم..."
+                className="rounded border border-line px-3 py-1.5 text-[13px]"
+              />
+            </div>
           }
           padded={false}
         >
@@ -158,7 +166,10 @@ export default function TeamDetail() {
               <div className="px-5 py-10 text-center text-[13px] text-text-3">لا نتائج مطابقة.</div>
             )}
             {filtered.map(st => (
-              <div key={st.id} className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-4 border-b border-line px-5 py-3 last:border-b-0">
+              <div key={st.id} className={`grid ${sel.active ? "grid-cols-[auto_auto_1fr_auto_auto]" : "grid-cols-[auto_1fr_auto_auto]"} items-center gap-4 border-b border-line px-5 py-3 last:border-b-0`}>
+                {sel.active && (
+                  <SelectCheckbox checked={sel.isSelected(st.id)} onChange={() => sel.toggle(st.id)} label={`تحديد ${st.name}`} />
+                )}
                 <div className="grid h-9 w-9 place-items-center rounded-full bg-surface-alt/60 text-[13px] font-semibold text-text-2">
                   {st.name.split(" ")[0]?.[0]}
                 </div>

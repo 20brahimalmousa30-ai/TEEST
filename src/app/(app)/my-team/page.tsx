@@ -12,6 +12,8 @@ import { Modal } from "@/components/ui/Modal";
 import { useSession } from "@/lib/auth/session";
 import { useStore } from "@/lib/store/StoreProvider";
 import { exportXlsx } from "@/lib/xlsx";
+import { useExportSelection } from "@/lib/useExportSelection";
+import { ExportSelectToggle, SelectCheckbox } from "@/components/ExportSelect";
 import { teamLabel } from "@/lib/format";
 import { TripSchedule } from "@/components/TripSchedule";
 
@@ -33,10 +35,14 @@ export default function MyTeamPage() {
   }, [ready, session, router]);
   useEffect(() => { document.title = "أسرتي — معالي محافظة بلّسمر"; }, []);
 
+  const sup = session ? supervisors.find(s => s.id === session.supervisorId) : undefined;
+  const activeTeam = sup && sup.teamIds.length > 0 ? teams.find(t => t.id === sup.teamIds[0]) : undefined;
+  const roster = activeTeam ? students.filter(s => s.teamId === activeTeam.id) : [];
+  const sel = useExportSelection(roster);
+
   if (!hydrated || !ready || !session || session.role !== "SUPERVISOR") return null;
 
-  const sup = supervisors.find(s => s.id === session.supervisorId);
-  if (!sup || sup.teamIds.length === 0) {
+  if (!sup || sup.teamIds.length === 0 || !activeTeam) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-8">
         <PageHeader eyebrow="أسرتي" title="لا أسرةٌ معيَّنة لك بعد" subtitle="راجع الإدارة إن كنتَ تتوقّع الظهور كمشرفِ أسرة." />
@@ -44,21 +50,21 @@ export default function MyTeamPage() {
     );
   }
 
-  const team = teams.find(t => t.id === sup.teamIds[0])!;
-  const roster = students.filter(s => s.teamId === team.id);
+  const team = activeTeam;
   const paid = roster.filter(s => s.paymentStatus === "PAID").length;
   const partial = roster.filter(s => s.paymentStatus === "PARTIAL").length;
   const pending = roster.filter(s => s.paymentStatus === "PENDING").length;
   const avgAtt = roster.length ? Math.round(roster.reduce((s, x) => s + x.attendance, 0) / roster.length) : 0;
 
   async function exportRoster() {
-    const rows = roster.map(s => [s.name, s.phone, s.grade, s.section,
+    const data = sel.exportRows;
+    const rows = data.map(s => [s.name, s.phone, s.grade, s.section,
       s.paymentStatus === "PAID" ? "مسدَّد" : s.paymentStatus === "PARTIAL" ? "جزئي" : "معلّق"]);
     await exportXlsx({
       filename: `أسرتي_${team.name}`,
       sheetName: "أسرتي",
       title: `${teamLabel(team.name)} — معالي محافظة بلّسمر`,
-      subtitle: `${roster.length} عضو`,
+      subtitle: `${data.length} عضو`,
       columns: [
         { header: "الاسم", width: 26, align: "right" },
         { header: "الجوّال", width: 16, align: "center" },
@@ -103,6 +109,7 @@ export default function MyTeamPage() {
           title={`أعضاء أسرتي (${roster.length})`}
           action={
             <div className="flex gap-2">
+              <ExportSelectToggle sel={sel} />
               <Button variant="outline" onClick={() => setAttOpen(true)}>✓ تسجيل الحضور</Button>
               <Button variant="outline" onClick={exportRoster}>⬇ تصدير إكسل</Button>
             </div>
@@ -111,7 +118,10 @@ export default function MyTeamPage() {
         >
           <div className="max-h-[540px] overflow-y-auto">
             {roster.slice(0, 30).map(st => (
-              <div key={st.id} className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-4 border-b border-line px-5 py-3 last:border-b-0">
+              <div key={st.id} className={`grid ${sel.active ? "grid-cols-[auto_auto_1fr_auto_auto]" : "grid-cols-[auto_1fr_auto_auto]"} items-center gap-4 border-b border-line px-5 py-3 last:border-b-0`}>
+                {sel.active && (
+                  <SelectCheckbox checked={sel.isSelected(st.id)} onChange={() => sel.toggle(st.id)} label={`تحديد ${st.name}`} />
+                )}
                 <div className="grid h-9 w-9 place-items-center rounded-full bg-surface-alt/60 text-[13px] font-semibold text-text-2">
                   {st.name.split(" ")[0]?.[0]}
                 </div>

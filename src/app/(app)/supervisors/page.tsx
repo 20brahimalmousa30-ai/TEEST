@@ -12,6 +12,8 @@ import type { Supervisor } from "@/lib/mock/types";
 import { SUPERVISOR_PERMISSIONS } from "@/lib/mock/types";
 import { parseCSV } from "@/lib/spreadsheet";
 import { exportXlsx } from "@/lib/xlsx";
+import { useExportSelection } from "@/lib/useExportSelection";
+import { ExportSelectToggle, SelectCheckbox } from "@/components/ExportSelect";
 import { fileToDataUrl } from "@/lib/image";
 import { teamLabel } from "@/lib/format";
 
@@ -30,9 +32,11 @@ export default function SupervisorsPage() {
   const photoRef = useRef<HTMLInputElement | null>(null);
   const [photoErr, setPhotoErr] = useState("");
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const sel = useExportSelection(supervisors);
 
   async function exportExcel() {
-    const rows = supervisors.map(s => [
+    const data = sel.exportRows;
+    const rows = data.map(s => [
       s.name, s.phone, s.email || "—", s.teamIds.length, s.committeeIds.length,
       canApprove ? (s.nationalId || "غير مسجَّل") : "",
     ]);
@@ -40,7 +44,7 @@ export default function SupervisorsPage() {
       filename: `المشرفون_${new Date().toISOString().slice(0, 10)}`,
       sheetName: "المشرفون",
       title: "قائمة المشرفين — معالي محافظة بلّسمر",
-      subtitle: `${supervisors.length} مشرف`,
+      subtitle: `${data.length} مشرف`,
       columns: [
         { header: "الاسم", width: 26, align: "right" },
         { header: "الجوّال", width: 16, align: "center" },
@@ -131,6 +135,7 @@ export default function SupervisorsPage() {
         subtitle={`${supervisors.length} مشرفاً. المشرف الواحد قد يقود أسرةً وينتمي لأكثر من لجنةٍ معاً.`}
         action={
           <div className="flex flex-wrap items-center gap-2">
+            <ExportSelectToggle sel={sel} />
             <Button variant="outline" onClick={() => fileRef.current?.click()}>استيراد Excel</Button>
             <Button variant="outline" onClick={exportExcel}>تصدير Excel</Button>
             <Button variant="primary" onClick={openNew}>+ إضافة مشرف</Button>
@@ -156,6 +161,11 @@ export default function SupervisorsPage() {
         <table className="w-full min-w-[640px] text-[13.5px]">
           <thead className="text-[11px] uppercase tracking-[.14em] text-text-3">
             <tr className="border-b border-line">
+              {sel.active && (
+                <th className="px-4 py-3 text-center font-normal">
+                  <SelectCheckbox checked={sel.allSelected} onChange={sel.toggleAll} label="تحديد الكل" />
+                </th>
+              )}
               <th className="px-5 py-3 text-start font-normal">المشرف</th>
               <th className="px-5 py-3 text-start font-normal">الاتصال</th>
               <th className="px-5 py-3 text-start font-normal">الأسر</th>
@@ -167,6 +177,11 @@ export default function SupervisorsPage() {
           <tbody>
             {supervisors.map(sup => (
               <tr key={sup.id} className="border-b border-line hover:bg-bg-raised">
+                {sel.active && (
+                  <td className="px-4 py-3 text-center">
+                    <SelectCheckbox checked={sel.isSelected(sup.id)} onChange={() => sel.toggle(sup.id)} label={`تحديد ${sup.name}`} />
+                  </td>
+                )}
                 <td className="px-5 py-3">
                   <div className="flex items-center gap-3">
                     <div className="grid h-8 w-8 place-items-center rounded-full bg-accent text-[12px] font-semibold" style={{ color: "#F4EEE2" }}>{sup.name[0]}</div>

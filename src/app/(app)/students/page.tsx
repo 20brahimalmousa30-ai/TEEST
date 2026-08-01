@@ -12,6 +12,8 @@ import { useSession } from "@/lib/auth/session";
 import { useStore } from "@/lib/store/StoreProvider";
 import { exportXlsx } from "@/lib/xlsx";
 import { exportStudentsPdf } from "@/lib/pdf/studentsReport";
+import { useExportSelection } from "@/lib/useExportSelection";
+import { ExportSelectToggle, SelectCheckbox } from "@/components/ExportSelect";
 import type { PaymentStatus, Student } from "@/lib/mock/types";
 import { sar, teamLabel } from "@/lib/format";
 
@@ -62,6 +64,8 @@ export default function StudentsPage() {
     return true;
   }), [approvedAll, teamFilter, payFilter, q]);
 
+  const sel = useExportSelection(filtered);
+
   const waitlist = useMemo(
     () => students.filter(isWaiting).sort((a, b) => (a.registeredAt ?? "").localeCompare(b.registeredAt ?? "")),
     [students],
@@ -106,7 +110,8 @@ export default function StudentsPage() {
   }
 
   async function exportFiltered() {
-    const rows = filtered.map(s => {
+    const data = sel.exportRows;
+    const rows = data.map(s => {
       const t = teams.find(t => t.id === s.teamId);
       // رقم الهويّة بلا قناع: الرقم الحقيقيّ (أو «غير مسجَّل»). المشرف لا يحوي الرقم
       //  الحقيقيّ في لقطته أصلاً (تجريدٌ خادميّ)، فيظهر له «غير مسجَّل».
@@ -115,10 +120,10 @@ export default function StudentsPage() {
         s.paymentStatus === "PAID" ? "مسدَّد" : s.paymentStatus === "PARTIAL" ? "جزئي" : "معلّق"];
     });
     await exportXlsx({
-      filename: `الشباب_${filtered.length}`,
+      filename: `الشباب_${data.length}`,
       sheetName: "الشباب",
       title: "قائمة الشباب — معالي محافظة بلّسمر",
-      subtitle: `${filtered.length} شاب`,
+      subtitle: `${data.length} شاب`,
       columns: [
         { header: "الاسم", width: 26, align: "right" },
         { header: "رقم الهويّة", width: 16, align: "center" },
@@ -141,13 +146,14 @@ export default function StudentsPage() {
       alert("لم تكتمل مزامنة البيانات بعد. حدِّث الصفحة ثم أعد المحاولة.");
       return;
     }
-    if (filtered.length === 0) {
+    const data = sel.exportRows;
+    if (data.length === 0) {
       alert("لا يوجد شبابٌ معتمدون مطابقون للفلاتر الحاليّة لتصديرهم.");
       return;
     }
     setPdfBusy(true);
     try {
-      await exportStudentsPdf({ students: filtered, teams, supervisors });
+      await exportStudentsPdf({ students: data, teams, supervisors });
     } catch (err) {
       console.error("PDF export failed:", err);
       alert("تعذّر توليد ملفّ PDF. حاول مرّة أخرى.");
@@ -379,6 +385,7 @@ export default function StudentsPage() {
           <option value="PARTIAL">جزئي</option>
           <option value="PENDING">معلّق</option>
         </select>
+        <ExportSelectToggle sel={sel} />
         <Button variant="outline" onClick={exportFiltered}>⬇ تصدير إكسل</Button>
         {canApprove && (
           <Button variant="primary" onClick={exportPdf} disabled={pdfBusy}>
@@ -392,6 +399,11 @@ export default function StudentsPage() {
         <table className="w-full min-w-[820px] text-[13.5px]">
           <thead className="text-[11px] tracking-[.14em] text-text-3">
             <tr className="border-b border-line">
+              {sel.active && (
+                <th className="px-4 py-3 text-center font-normal">
+                  <SelectCheckbox checked={sel.allSelected} onChange={sel.toggleAll} label="تحديد الكل" />
+                </th>
+              )}
               <th className="px-5 py-3 text-start font-normal">الاسم</th>
               <th className="px-5 py-3 text-start font-normal">الجوّال</th>
               <th className="px-5 py-3 text-start font-normal">الرمز</th>
@@ -404,12 +416,17 @@ export default function StudentsPage() {
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={8} className="px-5 py-10 text-center text-text-3">لا نتائج مطابقة.</td></tr>
+              <tr><td colSpan={sel.active ? 9 : 8} className="px-5 py-10 text-center text-text-3">لا نتائج مطابقة.</td></tr>
             )}
             {filtered.slice(0, 100).map(s => {
               const team = teams.find(t => t.id === s.teamId);
               return (
                 <tr key={s.id} className="border-b border-line hover:bg-bg-raised">
+                  {sel.active && (
+                    <td className="px-4 py-3 text-center">
+                      <SelectCheckbox checked={sel.isSelected(s.id)} onChange={() => sel.toggle(s.id)} label={`تحديد ${s.name}`} />
+                    </td>
+                  )}
                   <td className="px-5 py-3">
                     <Link href={`/students/${s.id}`} className="text-text hover:text-accent">{s.name}</Link>
                     {canApprove

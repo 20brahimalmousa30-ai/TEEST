@@ -84,9 +84,12 @@ function headerHtml(logo: string, title: string, subtitle: string, dateStr: stri
 }
 
 function theadHtml(columns: ReportColumn[]): string {
+  // نسمح برؤوسٍ من سطرين ونقصّ أيّ فائض داخل الخليّة (overflow:hidden + word-break)
+  // كي لا يطفح عنوانٌ طويل («المصروف على») على العمود المجاور فيتراكب النصّ.
   const th = (c: ReportColumn) =>
     `<th style="padding:9px 8px;font-size:11px;font-weight:700;color:${BRAND.band};` +
-    `text-align:${c.align || "center"};width:${c.width || "auto"};white-space:nowrap">${esc(c.header)}</th>`;
+    `text-align:${c.align || "center"};width:${c.width || "auto"};` +
+    `white-space:normal;overflow:hidden;word-break:break-word;line-height:1.3">${esc(c.header)}</th>`;
   return `<thead><tr style="background:${BRAND.petroleum}">${columns.map(th).join("")}</tr></thead>`;
 }
 
@@ -94,7 +97,8 @@ function rowHtml(cells: string[], columns: ReportColumn[], idx: number): string 
   const zebra = idx % 2 === 0 ? "#FFFFFF" : BRAND.paper;
   const td = (inner: string, c: ReportColumn) =>
     `<td style="height:${ROW_H}px;padding:4px 8px;font-size:10.5px;color:${BRAND.ink};` +
-    `text-align:${c.align || "center"};border-bottom:1px solid ${BRAND.line};vertical-align:middle">${inner}</td>`;
+    `text-align:${c.align || "center"};border-bottom:1px solid ${BRAND.line};vertical-align:middle;` +
+    `overflow:hidden;word-break:break-word">${inner}</td>`;
   return `<tr style="background:${zebra}">${cells.map((cell, i) => td(cell, columns[i])).join("")}</tr>`;
 }
 

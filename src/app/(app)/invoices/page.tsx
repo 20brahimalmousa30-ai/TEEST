@@ -12,6 +12,8 @@ import { useStore } from "@/lib/store/StoreProvider";
 import { useSession } from "@/lib/auth/session";
 import { exportXlsx, SAR_FMT } from "@/lib/xlsx";
 import { exportTableReportPdf, esc, ltr, pill, REPORT_COLORS as RC } from "@/lib/pdf/reportEngine";
+import { useExportSelection } from "@/lib/useExportSelection";
+import { ExportSelectToggle, SelectCheckbox } from "@/components/ExportSelect";
 import type { Invoice, OcrExtraction } from "@/lib/mock/types";
 import { sar, teamLabel } from "@/lib/format";
 import { fileToInvoiceImage, isSupportedInvoiceFile } from "@/lib/invoice-files";
@@ -210,6 +212,8 @@ export default function InvoicesPage() {
     return true;
   }), [invoices, statusFilter, q]);
 
+  const sel = useExportSelection(filtered);
+
   const summary = useMemo(() => ({
     total: invoices.reduce((s, i) => s + i.amount, 0),
     approved: invoices.filter(i => i.status === "approved" || i.status === "paid").reduce((s, i) => s + i.amount, 0),
@@ -256,15 +260,16 @@ export default function InvoicesPage() {
   }
 
   async function exportPurchasesXlsx() {
-    const rows = filtered.map(i => {
+    const data = sel.exportRows;
+    const rows = data.map(i => {
       const f = purchaseFields(i);
       return [f.number, f.vendor, f.vendorTax, f.purpose, f.scope, f.date, f.net, f.vat, f.total, f.status, f.uploader];
     });
     await exportXlsx({
-      filename: `تقرير_المشتريات_${filtered.length}`,
+      filename: `تقرير_المشتريات_${data.length}`,
       sheetName: "المشتريات",
       title: "تقرير المشتريات — معالي محافظة بلّسمر",
-      subtitle: `${filtered.length} فاتورة · إجماليّ ${sar(filtered.reduce((s, i) => s + i.amount, 0))} ر.س`,
+      subtitle: `${data.length} فاتورة · إجماليّ ${sar(data.reduce((s, i) => s + i.amount, 0))} ر.س`,
       columns: [
         { header: "رقم الفاتورة", width: 16, align: "center" },
         { header: "المورّد", width: 26, align: "right" },
@@ -284,9 +289,10 @@ export default function InvoicesPage() {
   }
 
   async function exportPurchasesPdf() {
+    const data = sel.exportRows;
     const statusColor = (s: Invoice["status"]) =>
       s === "approved" || s === "paid" ? RC.petroleum : s === "pending" ? RC.gold : "#B23A48";
-    const rows = filtered.map(i => {
+    const rows = data.map(i => {
       const f = purchaseFields(i);
       return [
         ltr(f.number),
@@ -300,31 +306,31 @@ export default function InvoicesPage() {
         esc(f.uploader),
       ];
     });
-    const totalSum = filtered.reduce((s, i) => s + i.amount, 0);
-    const approvedSum = filtered.filter(i => i.status === "approved" || i.status === "paid").reduce((s, i) => s + i.amount, 0);
-    const pendingCount = filtered.filter(i => i.status === "pending").length;
+    const totalSum = data.reduce((s, i) => s + i.amount, 0);
+    const approvedSum = data.filter(i => i.status === "approved" || i.status === "paid").reduce((s, i) => s + i.amount, 0);
+    const pendingCount = data.filter(i => i.status === "pending").length;
     const summaryHtml =
       `<div style="display:flex;gap:10px;flex-wrap:wrap">` +
-      [["إجماليّ المشتريات", `${sar(totalSum)} ر.س`], ["المعتمد", `${sar(approvedSum)} ر.س`], ["بانتظار الأمير", `${pendingCount}`], ["عدد الفواتير", `${filtered.length}`]]
+      [["إجماليّ المشتريات", `${sar(totalSum)} ر.س`], ["المعتمد", `${sar(approvedSum)} ر.س`], ["بانتظار الأمير", `${pendingCount}`], ["عدد الفواتير", `${data.length}`]]
         .map(([k, v]) => `<div style="flex:1;min-width:130px;border:1px solid ${RC.line};border-radius:8px;padding:8px 12px;background:${RC.paper}">` +
           `<div style="font-size:10px;color:${RC.sub}">${esc(k)}</div>` +
           `<div style="font-size:14px;font-weight:800;color:${RC.petroleum};margin-top:2px" dir="ltr">${esc(v)}</div></div>`).join("") +
       `</div>`;
     await exportTableReportPdf({
       title: "تقرير المشتريات",
-      subtitle: `${filtered.length} فاتورة`,
+      subtitle: `${data.length} فاتورة`,
       filename: "تقرير_المشتريات",
       footerLabel: "تقرير المشتريات",
       columns: [
-        { header: "رقم الفاتورة", width: "80px", align: "center" },
+        { header: "رقم الفاتورة", width: "74px", align: "center" },
         { header: "المورّد", width: "auto", align: "right" },
-        { header: "الرقم الضريبي", width: "104px", align: "center" },
+        { header: "الرقم الضريبي", width: "88px", align: "center" },
         { header: "الغرض", width: "auto", align: "right" },
-        { header: "المصروف على", width: "96px", align: "right" },
-        { header: "التاريخ", width: "78px", align: "center" },
-        { header: "الإجمالي", width: "84px", align: "center" },
-        { header: "الحالة", width: "92px", align: "center" },
-        { header: "مَن رفع", width: "90px", align: "right" },
+        { header: "المصروف على", width: "82px", align: "right" },
+        { header: "التاريخ", width: "68px", align: "center" },
+        { header: "الإجمالي", width: "72px", align: "center" },
+        { header: "الحالة", width: "80px", align: "center" },
+        { header: "مَن رفع", width: "72px", align: "right" },
       ],
       rows,
       summaryHtml,
@@ -339,6 +345,7 @@ export default function InvoicesPage() {
         subtitle={`${invoices.length} فاتورة، منها ${summary.aiExtracted} حُلِّلت بالذكاء الاصطناعي، و${summary.pending} بانتظار اعتماد الأمير.`}
         action={
           <div className="flex gap-2">
+            <ExportSelectToggle sel={sel} />
             <Button variant="outline" onClick={exportPurchasesXlsx}>⬇ إكسل</Button>
             <Button variant="outline" onClick={exportPurchasesPdf}>⎙ PDF</Button>
             <Button variant="primary" onClick={openModal}>↑ ارفع فواتير</Button>
@@ -400,6 +407,11 @@ export default function InvoicesPage() {
         <table className="w-full min-w-[720px] text-[13.5px]">
           <thead className="text-[11px] uppercase tracking-[.14em] text-text-3">
             <tr className="border-b border-line">
+              {sel.active && (
+                <th className="px-4 py-3 text-center font-normal">
+                  <SelectCheckbox checked={sel.allSelected} onChange={sel.toggleAll} label="تحديد الكل" />
+                </th>
+              )}
               <th className="px-5 py-3 text-start font-normal">الرقم / المورّد</th>
               <th className="px-5 py-3 text-start font-normal">الغرض</th>
               <th className="px-5 py-3 text-start font-normal">المصروف على</th>
@@ -410,12 +422,17 @@ export default function InvoicesPage() {
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={6} className="px-5 py-10 text-center text-text-3">لا فواتير مطابقة.</td></tr>
+              <tr><td colSpan={sel.active ? 7 : 6} className="px-5 py-10 text-center text-text-3">لا فواتير مطابقة.</td></tr>
             )}
             {filtered.map(inv => {
               const sp = statusPill(inv.status);
               return (
                 <tr key={inv.id} className="border-b border-line hover:bg-bg-raised">
+                  {sel.active && (
+                    <td className="px-4 py-3 text-center">
+                      <SelectCheckbox checked={sel.isSelected(inv.id)} onChange={() => sel.toggle(inv.id)} label={`تحديد ${inv.vendor}`} />
+                    </td>
+                  )}
                   <td className="px-5 py-3">
                     <Link href={`/invoices/${inv.id}`} className="text-text hover:text-accent">{inv.vendor}</Link>
                     <div className="mt-0.5 flex items-center gap-2">
