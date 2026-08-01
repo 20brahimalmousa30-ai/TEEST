@@ -592,3 +592,20 @@ create table if not exists activity_announcements (
 create index if not exists idx_announcements_committee on activity_announcements (committee_id);
 -- ترحيلٌ لجدولٍ موجود مسبقاً (شغّله مرّةً في Supabase إن أنشأت الجدول قبل إضافة التوقيت):
 alter table activity_announcements add column if not exists expires_at timestamptz;
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  لوحة الإعلانات (آخر الأخبار) — أخبارٌ عامّة يكتبها المشرفُ/الأمير،
+--  غيرُ مرتبطةٍ بلجنةٍ ولا نقاط. كلٌّ يدير أخباره؛ والأمير/نائبه يديرون الكلّ.
+--  ⚠️ شغّل هذا في Supabase.
+-- ═══════════════════════════════════════════════════════════════════════
+create table if not exists news_posts (
+  id              text primary key,
+  title           text not null,
+  body            text,                          -- نصُّ الخبر (اختياري)
+  image_data_url  text,                          -- صورةٌ اختياريّة (base64)
+  created_by      text,                          -- مُعرِّف الكاتب (مشرف/أمير)
+  created_by_name text,                          -- اسمُ الكاتب للعرض
+  active          boolean not null default true, -- إظهار/إخفاء من اللوحة
+  created_at      timestamptz not null default now()
+);
+create index if not exists idx_news_created on news_posts (created_at desc);

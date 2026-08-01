@@ -1,6 +1,6 @@
 "use server";
 import { getSupabase } from "@/lib/supabase/server";
-import type { Team, Student, Supervisor, Committee, Invoice, PaymentStatus, ActivityAnnouncement } from "@/lib/mock/types";
+import type { Team, Student, Supervisor, Committee, Invoice, PaymentStatus, ActivityAnnouncement, NewsPost } from "@/lib/mock/types";
 import type { RegField, LogoDisplayMode, State } from "@/lib/store/StoreProvider";
 import type { LoginResult } from "./types";
 import {
@@ -10,7 +10,7 @@ import {
   rowToStudent, studentToRow,
   rowToInvoice, invoiceToRow,
   rowToRegField, rowToStudentTask,
-  rowToActivityAnnouncement,
+  rowToActivityAnnouncement, rowToNewsPost,
 } from "./mappers";
 import { motivations as DEFAULT_MOTIVATIONS, tickerPhrases as DEFAULT_TICKER } from "@/lib/motivations";
 import type { PageMarqueeMap } from "@/lib/pageMarquees";
@@ -197,7 +197,7 @@ export async function loadAllData(): Promise<State> {
 
   const base: State = {
     teams: [], students: [], supervisors: [], committees: [], committeeTasks: [],
-    studentTasks: [], announcements: [],
+    studentTasks: [], announcements: [], news: [],
     invoices: [], trashInvoices: [], trashStudents: [], attendance: {},
     ...publicState,
   };
@@ -208,7 +208,7 @@ export async function loadAllData(): Promise<State> {
   // المستفيد: سجلُّه وفريقُه فقط.
   if (session.role === "BENEFICIARY") {
     if (!session.studentId) return base;
-    const [meRow, teams, myTasks, committees, anns] = await Promise.all([
+    const [meRow, teams, myTasks, committees, anns, news] = await Promise.all([
       db.from("students").select("*").eq("id", session.studentId).single(),
       db.from("teams").select("*").order("points", { ascending: false }),
       // البند ١: يرى الطالب مهامّه المرئيّة فقط (visible=true).
@@ -219,6 +219,9 @@ export async function loadAllData(): Promise<State> {
       db.from("committees").select("id,name,color,description"),
       db.from("activity_announcements").select("*").eq("active", true)
         .order("created_at", { ascending: false }),
+      // لوحة «آخر الأخبار»: الأخبارُ الفعّالة فقط، أحدثها أوّلاً.
+      db.from("news_posts").select("*").eq("active", true)
+        .order("created_at", { ascending: false }).limit(50),
     ]);
     // حسابٌ في سلة المحذوفات = محذوفٌ فعلياً في نظر المستفيد؛ لا بيانات له.
     if (meRow.data?.deleted_at) return base;
@@ -229,6 +232,7 @@ export async function loadAllData(): Promise<State> {
       studentTasks: (myTasks.data ?? []).map(rowToStudentTask),
       committees: (committees.data ?? []).map(rowToCommittee),
       announcements: (anns.data ?? []).map(rowToActivityAnnouncement),
+      news: (news.data ?? []).map(rowToNewsPost),
     };
   }
 
@@ -243,7 +247,7 @@ export async function loadAllData(): Promise<State> {
   // في كلّ تحميلٍ للصفحة (صورةٌ واحدة ≈ ٣٠٠ ك.ب) وتتضخّم خطّياً مع عدد
   // المستفيدين، فصارت أكبر سببٍ لبطء الموقع. تُجلَب الصور الآن عند الطلب
   // فقط عبر مسار /api/students/[id]/image عند عرض صورةٍ بعينها.
-  const [teams, students, supervisors, committees, invoices, attRows, asgRows, cTasks, sTasks, anns] =
+  const [teams, students, supervisors, committees, invoices, attRows, asgRows, cTasks, sTasks, anns, news] =
     await Promise.all([
       db.from("teams").select("*").order("points", { ascending: false }),
       db.from("students").select(STUDENT_LEAN_COLUMNS).order("points", { ascending: false }),
@@ -255,6 +259,8 @@ export async function loadAllData(): Promise<State> {
       db.from("committee_tasks").select("*").order("created_at", { ascending: false }),
       db.from("student_tasks").select("*").order("created_at", { ascending: false }),
       db.from("activity_announcements").select("*").order("created_at", { ascending: false }),
+      // لوحة «آخر الأخبار»: كلُّ الأخبار للطاقم (ليديروا المخفيَّ أيضاً).
+      db.from("news_posts").select("*").order("created_at", { ascending: false }).limit(50),
     ]);
 
   const attendance: Record<string, boolean[]> = {};
@@ -318,6 +324,7 @@ export async function loadAllData(): Promise<State> {
     })),
     studentTasks:   (sTasks.data ?? []).map(rowToStudentTask),
     announcements:  (anns.data ?? []).map(rowToActivityAnnouncement),
+    news:           (news.data ?? []).map(rowToNewsPost),
     invoices:       allInvoices.filter(i => !trashIds.has(i.id)),
     trashInvoices:  allInvoices.filter(i => trashIds.has(i.id)),
     attendance,
@@ -881,6 +888,55 @@ export async function dbUpdateAnnouncement(
 export async function dbDeleteAnnouncement(id: string) {
   await requireAnnouncementAccess(id);
   await getSupabase().from("activity_announcements").delete().eq("id", id);
+}
+
+/* ─────────── لوحة الإعلانات (آخر الأخبار) — أخبارٌ عامّة ───────────
+ *  يكتبها أيُّ عضوِ طاقمٍ (مشرف/أمير)، غيرُ مرتبطةٍ بلجنةٍ ولا نقاط. كلٌّ يدير
+ *  أخباره؛ والأمير/نائبه يديرون كلَّ الأخبار. اسمُ الكاتب يُشتقُّ من الجلسة
+ *  (لا من الواجهة) منعاً للانتحال. الحُرّاسُ خادميّون. */
+
+/** يتحقّق من صلاحيّة التصرّف في خبرٍ قائم: الأمير/نائبه كلّ الأخبار؛
+ *  والمشرفُ في أخباره التي كتبها فقط. */
+async function requireNewsAccess(id: string): Promise<DbSession> {
+  const s = await requireStaff();
+  if (ADMIN.includes(s.role)) return s;
+  const { data } = await getSupabase()
+    .from("news_posts").select("created_by").eq("id", id).single();
+  const mine = s.supervisorId ?? s.phone;
+  if (data?.created_by && mine && data.created_by === mine) return s;
+  throw new Error("غير مصرّح — يمكنك إدارةُ أخبارك أنت فقط.");
+}
+
+export async function dbAddNews(input: { title: string; body?: string; imageDataUrl?: string }) {
+  const s = await requireStaff();
+  const title = input.title.trim();
+  if (!title) return;
+  await getSupabase().from("news_posts").insert({
+    id: uid("news"), title,
+    body: input.body?.trim() || null,
+    image_data_url: input.imageDataUrl || null,
+    created_by: s.supervisorId ?? s.phone ?? null,
+    created_by_name: s.name || null,
+    active: true,
+  });
+}
+
+export async function dbUpdateNews(
+  id: string, patch: { title?: string; body?: string; imageDataUrl?: string; active?: boolean },
+) {
+  await requireNewsAccess(id);
+  const upd: Record<string, unknown> = {};
+  if (patch.title !== undefined) upd.title = patch.title.trim();
+  if (patch.body !== undefined) upd.body = patch.body.trim() || null;
+  if (patch.imageDataUrl !== undefined) upd.image_data_url = patch.imageDataUrl || null;
+  if (patch.active !== undefined) upd.active = patch.active;
+  if (Object.keys(upd).length === 0) return;
+  await getSupabase().from("news_posts").update(upd).eq("id", id);
+}
+
+export async function dbDeleteNews(id: string) {
+  await requireNewsAccess(id);
+  await getSupabase().from("news_posts").delete().eq("id", id);
 }
 
 /* ─────────── قيمة الرسوم الافتراضيّة (البند ٢) ───────────

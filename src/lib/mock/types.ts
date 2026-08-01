@@ -74,6 +74,18 @@ export type ActivityAnnouncement = {
   createdAt: string;
 };
 
+/** خبرٌ عامّ في لوحة «آخر الأخبار» — يكتبه المشرفُ/الأميرُ، غيرُ مرتبطٍ بلجنةٍ ولا نقاط. */
+export type NewsPost = {
+  id: string;
+  title: string;
+  body?: string;                     // نصُّ الخبر (اختياري)
+  imageDataUrl?: string;             // صورةٌ اختياريّة (base64)
+  createdBy?: string;                // مُعرِّف الكاتب (مشرف/أمير) — لصلاحيّة «كلٌّ يدير أخباره»
+  createdByName?: string;            // اسمُ الكاتب للعرض
+  active: boolean;                   // إظهار/إخفاء من اللوحة
+  createdAt: string;
+};
+
 export type Supervisor = {
   id: string;
   name: string;

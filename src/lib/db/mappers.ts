@@ -1,4 +1,4 @@
-import type { Team, Student, Supervisor, Committee, Invoice, StudentTask, ActivityAnnouncement } from "@/lib/mock/types";
+import type { Team, Student, Supervisor, Committee, Invoice, StudentTask, ActivityAnnouncement, NewsPost } from "@/lib/mock/types";
 import type { RegField } from "@/lib/store/StoreProvider";
 
 /**
@@ -107,6 +107,17 @@ export const rowToActivityAnnouncement = (r: any): ActivityAnnouncement => ({
   createdBy: r.created_by ?? undefined,
   active: r.active ?? true,
   expiresAt: r.expires_at ?? undefined,
+  createdAt: r.created_at ?? "",
+});
+
+export const rowToNewsPost = (r: any): NewsPost => ({
+  id: r.id,
+  title: r.title,
+  body: r.body ?? undefined,
+  imageDataUrl: r.image_data_url ?? undefined,
+  createdBy: r.created_by ?? undefined,
+  createdByName: r.created_by_name ?? undefined,
+  active: r.active ?? true,
   createdAt: r.created_at ?? "",
 });
 

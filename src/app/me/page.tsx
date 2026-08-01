@@ -18,7 +18,7 @@ import { studentNet, isActivityClosed, formatCountdown } from "@/lib/points";
 export default function MePage() {
   const { session, ready } = useSession();
   const router = useRouter();
-  const { students, teams, committees, announcements, studentTasks, submitReceipt, setStudentPhoto, hydrated, loadError } = useStore();
+  const { students, teams, committees, announcements, news, studentTasks, submitReceipt, setStudentPhoto, hydrated, loadError } = useStore();
   const [boardCommittee, setBoardCommittee] = useState("all");
   const [payOpen, setPayOpen] = useState(false);
   const [photoErr, setPhotoErr] = useState("");
@@ -296,6 +296,28 @@ export default function MePage() {
               </>
             )}
             <p className="mt-4 text-[12px] text-text-3">أنجِز نشاطاً من هذه الأنشطة وسيرصده لك مشرفُ اللجنة.</p>
+          </Card>
+        </section>
+
+        <section className="mt-6">
+          <Card title="آخر الأخبار" action={<span className="text-[11.5px] text-text-3">{news.length} خبراً</span>}>
+            {news.length === 0 ? (
+              <p className="py-4 text-center text-[13px] text-text-3">لا أخبارَ بعد — تابِع اللوحة لاحقاً.</p>
+            ) : (
+              <ul className="grid gap-3">
+                {news.map(n => (
+                  <li key={n.id} className="rounded border border-line px-3 py-3">
+                    {n.imageDataUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={n.imageDataUrl} alt="" className="mb-2 max-h-64 w-full rounded border border-line object-cover" />
+                    )}
+                    <div className="text-[14px] font-medium text-text">{n.title}</div>
+                    {n.body && <p className="mt-1 whitespace-pre-wrap text-[13px] text-text-2">{n.body}</p>}
+                    {n.createdByName && <div className="mt-2 text-[11.5px] text-text-3">بقلم: {n.createdByName}</div>}
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
         </section>
 

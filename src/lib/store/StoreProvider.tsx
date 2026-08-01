@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import type { Team, Student, Supervisor, Committee, CommitteeTask, StudentTask, ActivityAnnouncement, ActivityKind, ActivityTarget, Invoice, PaymentStatus, OcrExtraction, ConditionsPolicy } from "@/lib/mock/types";
+import type { Team, Student, Supervisor, Committee, CommitteeTask, StudentTask, ActivityAnnouncement, NewsPost, ActivityKind, ActivityTarget, Invoice, PaymentStatus, OcrExtraction, ConditionsPolicy } from "@/lib/mock/types";
 import {
   loadAllData,
   dbAddTeam, dbUpdateTeam, dbDeleteTeam,
@@ -13,6 +13,7 @@ import {
   dbAddCommitteeTask, dbToggleCommitteeTask, dbDeleteCommitteeTask,
   dbAddActivity, dbToggleStudentTask, dbToggleActivityBatch, dbSetStudentTaskVisible, dbDeleteStudentTask, dbDeleteActivityBatch,
   dbAddAnnouncement, dbUpdateAnnouncement, dbDeleteAnnouncement,
+  dbAddNews, dbUpdateNews, dbDeleteNews,
   dbSetDefaultFee,
   dbAddInvoice, dbAddInvoices, dbApproveInvoice, dbRejectInvoice, dbDeleteInvoice, dbRestoreInvoice, dbAnalyzeInvoice,
   dbToggleRegField, dbReorderRegField, dbAddRegField, dbUpdateRegField, dbRemoveRegField, dbSetRegOpen,
@@ -62,6 +63,8 @@ export type State = {
   studentTasks: StudentTask[];
   /** إعلاناتُ الأنشطة (لوحة الإعلانات) — يعلنها المشرف، ويراها الطلاب */
   announcements: ActivityAnnouncement[];
+  /** أخبارٌ عامّة (لوحة آخر الأخبار) — يكتبها المشرف/الأمير، ويراها الطلاب */
+  news:         NewsPost[];
   invoices:     Invoice[];
   regFields:    RegField[];
   regOpen:      boolean;
@@ -109,6 +112,7 @@ const initialState: State = {
   committeeTasks: [],
   studentTasks: [],
   announcements: [],
+  news:         [],
   invoices:     [],
   regFields:    initialFields,
   regOpen:      true,
@@ -188,6 +192,10 @@ export type StoreActions = {
   addAnnouncement(input: { title: string; points: number; committeeId: string; expiresAt?: string }): void;
   updateAnnouncement(id: string, patch: { title?: string; points?: number; active?: boolean }): void;
   deleteAnnouncement(id: string): void;
+  // General news (لوحة آخر الأخبار) — any staff writes; each manages own (admin all)
+  addNews(input: { title: string; body?: string; imageDataUrl?: string; createdBy?: string; createdByName?: string }): void;
+  updateNews(id: string, patch: { title?: string; body?: string; imageDataUrl?: string; active?: boolean }): void;
+  deleteNews(id: string): void;
   // Default fee (البند ٢) — Prince only; applies to all students
   setDefaultFee(amount: number): void;
   // Invoices
@@ -583,6 +591,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     deleteAnnouncement(id) {
       update(s => ({ announcements: s.announcements.filter(a => a.id !== id) }));
       persist(() => dbDeleteAnnouncement(id));
+    },
+
+    addNews({ title, body, imageDataUrl, createdBy, createdByName }) {
+      const t = title.trim();
+      if (!t) return;
+      const b = body?.trim() || undefined;
+      const row: NewsPost = {
+        id: uid("news"), title: t, body: b, imageDataUrl,
+        createdBy, createdByName, active: true, createdAt: new Date().toISOString(),
+      };
+      update(s => ({ news: [row, ...s.news] }));
+      // اسمُ الكاتب ومُعرِّفه يُشتقّان خادميّاً من الجلسة (الحقول أعلاه للعرض المتفائل فقط).
+      persist(() => dbAddNews({ title: t, body: b, imageDataUrl }));
+    },
+    updateNews(id, patch) {
+      update(s => ({ news: s.news.map(n => n.id === id ? { ...n, ...patch } : n) }));
+      persist(() => dbUpdateNews(id, patch));
+    },
+    deleteNews(id) {
+      update(s => ({ news: s.news.filter(n => n.id !== id) }));
+      persist(() => dbDeleteNews(id));
     },
     setDefaultFee(amount) {
       const fee = Math.max(0, Math.round(amount));
