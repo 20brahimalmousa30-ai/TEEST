@@ -19,7 +19,7 @@ import {
   dbToggleRegField, dbReorderRegField, dbAddRegField, dbUpdateRegField, dbRemoveRegField, dbSetRegOpen,
   dbToggleAttendance, dbSetLogoDisplayMode, dbResetAll,
   dbSetMotivations, dbSetTickerPhrases, dbSetTripMessage, dbSetPostRegisterNote,
-  dbSetLogoUrl, dbSetBrandColors, dbSetPageMarquees,
+  dbSetLogoUrl, dbSetScheduleUrl, dbSetBrandColors, dbSetPageMarquees,
   dbSetAssociationIdentity, dbSetConditionsPolicy,
 } from "@/lib/db/data";
 import { motivations as DEFAULT_MOTIVATIONS, tickerPhrases as DEFAULT_TICKER } from "@/lib/motivations";
@@ -90,6 +90,12 @@ export type State = {
   /** إصدار الشعار المخصّص (0 = لا شعار مخصّص). يبني رابط /api/logo?v= ويكسر
    *  التخزين المؤقّت عند التغيير — بديلٌ خفيفٌ عن شحن base64 في كل تحميل. */
   logoVersion: number;
+  /** صورة «جدول السفرة» (Data URL) — للمعاينة الفوريّة بعد الرفع فقط؛
+   *  لا تُشحن في لقطة التحميل. فارغٌ = استعمِل scheduleVersion/لا جدول. */
+  scheduleUrl: string;
+  /** إصدار جدول السفرة (0 = لا جدول). يبني رابط /api/schedule?v= ويكسر التخزين
+   *  المؤقّت عند التغيير — بديلٌ خفيفٌ عن شحن base64 عالي الدقّة في كل تحميل. */
+  scheduleVersion: number;
   /** ألوان الهوية المشتقّة من الشعار — null = ألوان الثيم الافتراضيّة */
   brandColors: BrandColors | null;
   /** خلفيّة تحفيزيّة متحرّكة لكلّ صفحة — يُحرّرها الأمير (المفتاح = صفحة) */
@@ -126,6 +132,8 @@ const initialState: State = {
   postRegisterNote: "",
   logoUrl:       "",
   logoVersion:   0,
+  scheduleUrl:   "",
+  scheduleVersion: 0,
   brandColors:   null,
   pageMarquees:  {},
   associationName: "",
@@ -228,6 +236,8 @@ export type StoreActions = {
   setPostRegisterNote(text: string): void;
   // Site logo image + brand colors (Prince only) — البند ٦
   setLogoUrl(url: string): void;
+  /** جدول السفرة: يرفع الأمير صورة الجدول (Data URL) بكامل دقّتها. فارغٌ = حذفه. */
+  setScheduleUrl(url: string): void;
   setBrandColors(colors: BrandColors | null): void;
   // Per-page background marquee (Prince only)
   setPageMarquee(key: string, cfg: PageMarquee): void;
@@ -744,6 +754,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       // بعد المزامنة (حين يُفرَّغ logoUrl عند إعادة التحميل). 0 = استعادة الافتراضي.
       update({ logoUrl: url, logoVersion: url ? Date.now() : 0 });
       persist(() => dbSetLogoUrl(url));
+    },
+    setScheduleUrl(url) {
+      // معاينةٌ فوريّة عبر scheduleUrl، وتبديلُ scheduleVersion ليعرض /api/schedule
+      // الجديد بعد المزامنة (حين يُفرَّغ scheduleUrl). 0 = لا جدول.
+      update({ scheduleUrl: url, scheduleVersion: url ? Date.now() : 0 });
+      persist(() => dbSetScheduleUrl(url));
     },
     setBrandColors(colors) {
       update({ brandColors: colors });

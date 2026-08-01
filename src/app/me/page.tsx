@@ -12,6 +12,7 @@ import { useSession, clearSession, announceSessionChange } from "@/lib/auth/sess
 import { useStore } from "@/lib/store/StoreProvider";
 import { LoadErrorBanner } from "@/components/LoadErrorBanner";
 import { VersionWatcher } from "@/components/VersionWatcher";
+import { TripSchedule } from "@/components/TripSchedule";
 import { sar } from "@/lib/format";
 import { studentNet, isActivityClosed, formatCountdown } from "@/lib/points";
 
@@ -249,6 +250,10 @@ export default function MePage() {
             )}
             <p className="mt-4 text-[12px] text-text-3">هذه أنشطتُك وخصوماتُك — يرصدها مشرفك أو الأمير، وتنعكس على رصيد نقاطك.</p>
           </Card>
+        </section>
+
+        <section className="mt-6">
+          <TripSchedule />
         </section>
 
         <section className="mt-6">

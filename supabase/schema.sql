@@ -609,3 +609,13 @@ create table if not exists news_posts (
   created_at      timestamptz not null default now()
 );
 create index if not exists idx_news_created on news_posts (created_at desc);
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  جدول السفرة: صورةٌ يرفعها الأمير بكامل دقّتها (بلا أيّ ضغطٍ أو تصغير)،
+--  تظهر للطلاب والمشرفين. تُخزَّن base64 وتُخدَم عند الطلب عبر
+--  /api/schedule?v=schedule_version (كسر التخزين المؤقّت عند كل رفعٍ جديد)،
+--  فلا تُشحن في لقطة loadAllData. schedule_version = 0 يعني «لا جدول».
+--  ⚠️ شغّل هذا في Supabase.
+-- ═══════════════════════════════════════════════════════════════════════
+alter table app_settings add column if not exists schedule_url     text;
+alter table app_settings add column if not exists schedule_version bigint not null default 0;

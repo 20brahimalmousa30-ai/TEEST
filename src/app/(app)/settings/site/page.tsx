@@ -20,6 +20,7 @@ export default function SiteSettingsPage() {
     tripMessage, setTripMessage,
     postRegisterNote, setPostRegisterNote,
     logoUrl, logoVersion, brandColors, setLogoUrl, setBrandColors,
+    scheduleUrl, scheduleVersion, setScheduleUrl,
   } = useStore();
   const { session } = useSession();
   const canControlLogo = session?.role === "PRINCE" || session?.role === "DEPUTY_PRINCE";
@@ -70,6 +71,35 @@ export default function SiteSettingsPage() {
   function revertLogo() { setLogoUrl(""); cancelLogoDraft(); setLogoSaved(false); }
   function applyColors() { if (suggested) { setBrandColors(suggested); } }
   function revertColors() { setBrandColors(null); }
+
+  // ── رفع «جدول السفرة» (صورة) بكامل دقّتها — بلا أيّ ضغطٍ أو تصغير ──
+  const scheduleInputRef = useRef<HTMLInputElement>(null);
+  const [scheduleDraft, setScheduleDraft] = useState<string | null>(null);
+  const [scheduleErr, setScheduleErr] = useState("");
+  const [scheduleSaved, setScheduleSaved] = useState(false);
+  const MAX_SCHEDULE_BYTES = 10 * 1024 * 1024;
+  const hasSchedule = Boolean((scheduleUrl ?? "").trim()) || scheduleVersion > 0;
+  const currentSchedule = (scheduleUrl ?? "").trim() || (scheduleVersion > 0 ? `/api/schedule?v=${scheduleVersion}` : "");
+
+  async function onPickSchedule(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const ok = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+    if (!ok.includes(file.type)) { setScheduleErr("صيغةٌ غير مدعومة — استخدم PNG أو JPG أو WebP أو GIF."); return; }
+    if (file.size > MAX_SCHEDULE_BYTES) { setScheduleErr("حجم الملفّ يتجاوز ١٠ ميغابايت — اختر صورةً أصغر."); return; }
+    setScheduleErr(""); setScheduleSaved(false);
+    try { setScheduleDraft(await fileToDataUrl(file)); }
+    catch { setScheduleErr("تعذّرت قراءة الصورة."); }
+  }
+  function saveSchedule() {
+    if (!scheduleDraft) return;
+    setScheduleUrl(scheduleDraft);
+    setScheduleDraft(null);
+    setScheduleSaved(true);
+  }
+  function cancelScheduleDraft() { setScheduleDraft(null); setScheduleErr(""); }
+  function removeSchedule() { setScheduleUrl(""); cancelScheduleDraft(); setScheduleSaved(false); }
 
   if (!canControlLogo) {
     return (
@@ -167,6 +197,42 @@ export default function SiteSettingsPage() {
                 <Button variant="outline" onClick={revertColors}>استعادة ألوان الثيم الافتراضيّة</Button>
               </div>
             )}
+          </Card>
+
+          <Card title="جدول السفرة (صورة)">
+            <p className="mb-4 text-[12.5px] leading-[1.8] text-text-2">
+              ارفع صورة جدول السفرة (PNG أو JPG أو WebP أو GIF، بحدٍّ أقصى ١٠ ميغابايت). تُعرض للطلاب
+              والمشرفين بكامل دقّتها كما رفعتَها — بلا أيّ ضغطٍ أو تصغير — ويتكيّف الإطار مع مقاسها.
+            </p>
+
+            {(scheduleDraft || currentSchedule) && (
+              <div className="mb-4 overflow-hidden rounded border border-line bg-bg-raised">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={scheduleDraft ?? currentSchedule}
+                  alt="معاينة جدول السفرة"
+                  className="block w-full"
+                  style={{ height: "auto" }}
+                />
+              </div>
+            )}
+
+            <div className="mb-2 text-[12.5px] text-text-2">
+              {scheduleDraft ? "معاينةٌ حيّة — لم تُحفظ بعد." : hasSchedule ? "جدولٌ مُطبَّقٌ حاليّاً — يراه الطلاب والمشرفون." : "لا يوجد جدولٌ بعد."}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => scheduleInputRef.current?.click()}>
+                {hasSchedule || scheduleDraft ? "تغيير الصورة…" : "اختر صورة…"}
+              </Button>
+              {scheduleDraft && <Button onClick={saveSchedule}>حفظ الجدول وتطبيقه</Button>}
+              {scheduleDraft && <Button variant="outline" onClick={cancelScheduleDraft}>إلغاء</Button>}
+              {hasSchedule && !scheduleDraft && <Button variant="outline" onClick={removeSchedule}>حذف الجدول</Button>}
+              <input ref={scheduleInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={onPickSchedule} className="hidden" />
+            </div>
+
+            {scheduleErr && <p className="mt-3 text-[12px] text-critical">{scheduleErr}</p>}
+            {scheduleSaved && !scheduleDraft && <p className="mt-3 text-[12px] text-ok">✓ حُفظ الجدول وظهر للطلاب والمشرفين.</p>}
           </Card>
         </div>
 

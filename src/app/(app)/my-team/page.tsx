@@ -13,6 +13,7 @@ import { useSession } from "@/lib/auth/session";
 import { useStore } from "@/lib/store/StoreProvider";
 import { exportXlsx } from "@/lib/xlsx";
 import { teamLabel } from "@/lib/format";
+import { TripSchedule } from "@/components/TripSchedule";
 
 const dayLabels = ["اليوم ١", "اليوم ٢", "اليوم ٣", "اليوم ٤", "اليوم ٥", "اليوم ٦", "اليوم ٧", "اليوم ٨"];
 
@@ -92,6 +93,10 @@ export default function MyTeamPage() {
         <KpiCard label="السداد" value={`${paid}/${roster.length}`} sub={partial > 0 ? `+ ${partial} جزئي · ${pending} معلّق` : "لا معلّقات"} variant={pending > roster.length * 0.2 ? "warn" : "ok"} />
         <KpiCard label="متوسّط الحضور" value={`${avgAtt}%`} variant={avgAtt >= 90 ? "ok" : "warn"} />
       </section>
+
+      <div className="mb-6">
+        <TripSchedule />
+      </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.5fr_1fr]">
         <Card

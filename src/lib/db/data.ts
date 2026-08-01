@@ -46,6 +46,7 @@ const INVOICE_LEAN_COLUMNS =
 const APP_SETTINGS_LEAN_COLUMNS =
   "id,reg_open,logo_display_mode,motivations,ticker_phrases,trip_message," +
   "post_register_note,brand_accent,brand_accent_warm,page_marquees,logo_version," +
+  "schedule_version," +
   "association_name,association_tax_number,conditions_policy,default_fee";
 
 async function requireSession(): Promise<DbSession> {
@@ -115,12 +116,13 @@ function magicMatches(format: string, head: Buffer): boolean {
 }
 
 /** يتحقّق أنّ سلسلة Data URL صورةٌ مدعومة وبحجمٍ معقول (يمنع SVG/الحمولات الخبيثة). */
-function assertValidImage(dataUrl?: string): void {
+function assertValidImage(dataUrl?: string, maxBytes = 3 * 1024 * 1024): void {
   if (!dataUrl) return;
   const m = /^data:image\/(png|jpe?g|webp|gif);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl.trim());
   if (!m) throw new Error("صيغة الصورة غير مدعومة (المسموح: PNG/JPEG/WebP/GIF).");
   const bytes = Math.floor((m[2].length * 3) / 4);
-  if (bytes > 3 * 1024 * 1024) throw new Error("حجم الصورة يتجاوز الحدّ (٣ ميغابايت).");
+  const maxMb = Math.round(maxBytes / (1024 * 1024));
+  if (bytes > maxBytes) throw new Error(`حجم الصورة يتجاوز الحدّ (${maxMb} ميغابايت).`);
   // تحقّق البايتات الأولى: يجب أن يطابق المحتوى النوعَ المُعلَن فعلاً، لا الترويسة وحدها.
   const head = Buffer.from(m[2].slice(0, 24), "base64");
   if (!magicMatches(m[1], head)) throw new Error("محتوى الصورة لا يطابق نوعها المُعلَن.");
@@ -168,6 +170,7 @@ export async function loadAllData(): Promise<State> {
     motivations?: unknown; ticker_phrases?: unknown;
     trip_message?: string; post_register_note?: string;
     logo_version?: number; brand_accent?: string; brand_accent_warm?: string;
+    schedule_version?: number;
     page_marquees?: unknown;
     association_name?: string; association_tax_number?: string; conditions_policy?: unknown;
     default_fee?: number;
@@ -185,6 +188,10 @@ export async function loadAllData(): Promise<State> {
     // اعتماداً على logoVersion. يبقى logoUrl للمعاينة الفوريّة بعد الرفع فقط.
     logoUrl:        "",
     logoVersion:    s?.logo_version ?? 0,
+    // صورة الجدول تُستبعَد من اللقطة وتُجلَب عند الطلب عبر /api/schedule؛ نكتفي هنا
+    // بـ scheduleVersion الخفيف لبناء الرابط. scheduleUrl للمعاينة الفوريّة بعد الرفع.
+    scheduleUrl:    "",
+    scheduleVersion: s?.schedule_version ?? 0,
     brandColors:    (s?.brand_accent && s?.brand_accent_warm)
       ? { accent: s.brand_accent, accentWarm: s.brand_accent_warm }
       : null,
@@ -1171,6 +1178,19 @@ export async function dbSetLogoUrl(url: string) {
   const { error } = await getSupabase()
     .from("app_settings")
     .update({ logo_url: url || null, logo_version: url ? Date.now() : 0 })
+    .eq("id", 1);
+  if (error) throw error;
+}
+
+/** جدول السفرة: يحفظ صورة الجدول (Data URL) بكامل دقّتها. فارغٌ = حذف الجدول.
+ *  نُبدّل schedule_version: قيمةٌ جديدة عند الرفع (لكسر التخزين المؤقّت)، و0 عند الحذف.
+ *  حدٌّ أعلى ١٠ ميغابايت ليتّسع لجدولٍ عالي الدقّة دون أيّ ضغطٍ من التطبيق. */
+export async function dbSetScheduleUrl(url: string) {
+  await requireAdmin();
+  if (url) assertValidImage(url, 10 * 1024 * 1024);
+  const { error } = await getSupabase()
+    .from("app_settings")
+    .update({ schedule_url: url || null, schedule_version: url ? Date.now() : 0 })
     .eq("id", 1);
   if (error) throw error;
 }
