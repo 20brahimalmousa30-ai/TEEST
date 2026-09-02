@@ -55,6 +55,26 @@ TOOL_HEADER = re.compile(
     re.IGNORECASE,
 )
 
+# ------------------------------------------------- تحديد منطقة طلب الإذن
+# الأزرار التي تُنهي منطقة الطلب
+BUTTON_MARKERS = ("always allow", "allow once", "deny", "don't ask again")
+
+# ترويسة الطلب: «Allow Claude to run …؟» — الفعل بعدها يحدّد نوع الأداة
+PROMPT_HEADER = re.compile(r"^\s*Allow\s+Claude\s+to\s+(\w+)\b(.*)$", re.IGNORECASE)
+PROMPT_QUESTION = re.compile(r"(do you want|would you like|proceed\?)", re.IGNORECASE)
+
+# أقصى عدد أسطر نرجع بها للخلف بحثاً عن الترويسة
+MAX_BLOCK_LINES = 40
+
+# فعل الترويسة ⇒ اسم الأداة
+VERB_TO_TOOL = {
+    "run": "Bash", "execute": "Bash", "use": "Bash",
+    "read": "Read", "view": "Read", "open": "Read",
+    "write": "Write", "create": "Write",
+    "edit": "Edit", "update": "Edit", "modify": "Edit",
+    "fetch": "WebFetch", "search": "WebSearch",
+}
+
 
 # ============================================================ نوافذ ويندوز
 def _user32():
@@ -189,15 +209,56 @@ def detect_prompt(text: str) -> Prompt | None:
     return Prompt(has_always, has_once)
 
 
+def locate_prompt_block(text: str) -> str | None:
+    """يعزل منطقة طلب الإذن من نصّ النافذة كاملاً.
+
+    نافذة Claude Code تحوي الشريط الجانبي وكامل المحادثة وشريط الحالة —
+    مئات الأسطر. البحث فيها كلها يلتقط جملاً عشوائية من المحادثة، ويُشعل
+    قواعد الخطر على كلمات وردت في كلامك لا في الأمر المطلوب.
+
+    فنحدّد المنطقة بين ترويسة الطلب وأزراره، ولا نحكم إلا عليها.
+    """
+    lines = [line.strip() for line in text.splitlines()]
+
+    # آخر سطر يحمل زرّاً من أزرار الإذن هو نهاية المنطقة
+    end = None
+    for index in range(len(lines) - 1, -1, -1):
+        low = lines[index].lower()
+        if any(marker in low for marker in BUTTON_MARKERS):
+            end = index
+            break
+    if end is None:
+        return None
+
+    # نرجع للخلف بحثاً عن ترويسة «Allow Claude to …» — وهي وحدها حدّ البداية.
+    # سؤال «Do you want to proceed?» لا يصلح حدّاً، لأنه في تنسيق الطرفية
+    # يأتي **بعد** الأمر لا قبله، فالتوقّف عنده يقتطع الأمر نفسه.
+    start = max(0, end - MAX_BLOCK_LINES)
+    for index in range(end - 1, start - 1, -1):
+        if PROMPT_HEADER.match(lines[index]):
+            start = index
+            break
+
+    block = [line for line in lines[start:end] if line]
+    return "\n".join(block) if block else None
+
+
 def extract_request(text: str) -> tuple[str, str] | None:
     """يستخرج (اسم الأداة، المُعامل). يعيد None إن تعذّر ذلك بثقة."""
-    lines: list[str] = []
-    for raw in text.splitlines():
-        line = raw.strip().strip("`").strip()
-        if not line or UI_NOISE.match(line) or len(line) > 300:
-            continue
-        lines.append(line)
+    raw_lines = [line.strip().strip("`").strip() for line in text.splitlines()]
 
+    # ١) ترويسة «Allow Claude to <فعل> …» — الشكل الذي يعرضه التطبيق فعلاً
+    for index, line in enumerate(raw_lines):
+        header = PROMPT_HEADER.match(line)
+        if not header:
+            continue
+        tool = VERB_TO_TOOL.get(header.group(1).lower(), "Bash")
+        argument = _pick_command(raw_lines, skip=index)
+        return (tool, argument) if argument else None
+
+    # ٢) ترويسة على هيئة اسم الأداة في سطر مستقلّ (تنسيق الطرفية)
+    lines = [line for line in raw_lines
+             if line and not UI_NOISE.match(line) and len(line) <= 300]
     if not lines:
         return None
 
@@ -220,13 +281,35 @@ def extract_request(text: str) -> tuple[str, str] | None:
     return None
 
 
-def evaluate(text: str, allow_edits: bool = True) -> tuple[Analysis, str, str]:
-    """يحلّل نصّ نافذة الإذن ويعيد (التحليل، اسم الأداة، المُعامل)."""
-    request = extract_request(text)
+def _pick_command(lines: list[str], skip: int) -> str:
+    """يختار سطر الأمر من منطقة الطلب: أطول سطر ليس ترويسةً ولا زرّاً."""
+    best = ""
+    for index, line in enumerate(lines):
+        if index == skip or not line:
+            continue
+        low = line.lower()
+        if any(marker in low for marker in BUTTON_MARKERS):
+            continue
+        if UI_NOISE.match(line) or PROMPT_HEADER.match(line):
+            continue
+        if len(line) > len(best):
+            best = line
+    return best
 
-    # فحص الخطر على النصّ كاملاً — يلتقط إشارة الخطر أينما وردت،
-    # حتى لو فشل الاستخراج أو ورد الخطر في سطر وصفيّ خارج الأمر.
-    danger = find_danger(text)
+
+def evaluate(text: str, allow_edits: bool = True) -> tuple[Analysis, str, str]:
+    """يحلّل نصّ نافذة الإذن ويعيد (التحليل، اسم الأداة، المُعامل).
+
+    نعزل منطقة الطلب أولاً ولا نحكم إلا عليها: نافذة Claude Code تحوي
+    محادثتك كاملة، وفحصها كلّها يُشعل قواعد الخطر على كلمات وردت في
+    كلامك لا في الأمر المطلوب.
+    """
+    block = locate_prompt_block(text) or text
+    request = extract_request(block)
+
+    # فحص الخطر داخل منطقة الطلب — يلتقط الخطر أينما ورد فيها،
+    # حتى لو فشل الاستخراج أو ورد في سطر وصفيّ داخل الطلب.
+    danger = find_danger(block)
     if danger:
         _rule_id, category, why, matched = danger
         tool, argument = request if request else ("", matched)

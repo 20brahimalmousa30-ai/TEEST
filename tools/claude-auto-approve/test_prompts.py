@@ -127,6 +127,9 @@ def run() -> int:
         print(f"  {status} {name:28} → لا نافذة إذن")
 
     print()
+    failures.extend(test_real_window())
+
+    print()
     if failures:
         print(f"فشل {len(failures)}:")
         for f in failures:
@@ -134,6 +137,61 @@ def run() -> int:
         return 1
     print("✅ نجحت كل الحالات")
     return 0
+
+
+# ============================ نافذة حقيقية: شريط جانبي + محادثة + طلب
+REAL_WINDOW = """Claude Code
+سراج منيرا
+Idle
+أبو محمد
+DEBT.md and CLAUDE.md first. The last pre-launch item — three small closes.
+لنحذف المجلد القديم، استخدم rm -rf على build إن احتجت
+تأكّد أن ملفّ .env فيه كلمة المرور الصحيحة قبل النشر
+Opus 5
+Usage: 25% of 5-hour limit
+Allow Claude to run Fingerprint the fixed files before mutating?
+cd "C:/Users/abu/Desktop" && sha256sum src/action-dialog.tsx > .data/fixed.sha256 && cat .data/fixed.sha256
+Deny
+1
+Esc
+Always allow
+2
+Ctrl
+Enter
+Allow once
+3
+Type / for commands"""
+
+
+def test_real_window() -> list[str]:
+    """الحكم يجب أن يقع على الأمر وحده، لا على نصّ المحادثة حوله."""
+    from claude_auto_approve import locate_prompt_block
+
+    problems = []
+    block = locate_prompt_block(REAL_WINDOW)
+
+    if block is None:
+        return ["❌ لم تُعزل منطقة الطلب من نافذة حقيقية"]
+
+    # نصّ المحادثة يجب ألّا يدخل المنطقة المعزولة
+    for leak in ("DEBT.md", "rm -rf", ".env", "كلمة المرور", "Usage:"):
+        if leak in block:
+            problems.append(f"❌ تسرّب نصّ محادثة إلى منطقة الطلب: {leak!r}")
+
+    analysis, tool, argument = evaluate(REAL_WINDOW)
+
+    if tool != "Bash":
+        problems.append(f"❌ الأداة={tool!r} والمتوقّع 'Bash'")
+    if not argument.startswith("cd "):
+        problems.append(f"❌ المُعامل ليس الأمر: {argument[:60]!r}")
+    if analysis.verdict != "partial":
+        problems.append(f"❌ الحكم={analysis.verdict} والمتوقّع partial")
+    if len(analysis.parts) != 3:
+        problems.append(f"❌ عدد الأجزاء={len(analysis.parts)} والمتوقّع 3")
+
+    print(f"  {'✅' if not problems else '❌'} نافذة حقيقية: الأداة={tool} "
+          f"الحكم={analysis.verdict} أجزاء={len(analysis.parts)}")
+    return problems
 
 
 if __name__ == "__main__":
