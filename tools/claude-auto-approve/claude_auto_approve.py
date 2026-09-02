@@ -644,7 +644,10 @@ class Guard:
                 self._note(f"reading:{candidate}", "🔎 أقرأ",
                            f"«{title[:50] or 'نافذة بلا عنوان'}» — {len(candidate_text)} حرفاً")
                 break
-            if not text:                       # أول نافذة تُعطي نصّاً، احتياطاً
+            # احتياطاً: نحتفظ بالنافذة **الأغنى نصّاً** لا بأولها — فأول
+            # نافذة قد تكون شريطاً جانبياً بينما اللوحة الحقيقية بعدها،
+            # والإبلاغ عن الأولى يخفي أن القراءة تصل إلى المكان الصحيح.
+            if len(candidate_text) > len(text):
                 hwnd, text, read_title = candidate, candidate_text, title
 
         if hwnd is None or not text.strip():
