@@ -15,7 +15,8 @@
     python claude_auto_approve.py --auto-deny    # بعد أن تثق به: يرفض بنفسه
     python claude_auto_approve.py --dry-run      # معاينة بلا ضغط
 
-اختصارات: Ctrl+Alt+S تشغيل/إيقاف | Ctrl+Alt+Q إنهاء
+التحكّم: لوحة صغيرة أسفل الشاشة، أو اختصارات قابلة للتغيير
+(الافتراضي: Ctrl+Alt+Shift+P إيقاف · +G غياب · +X إنهاء)
 """
 
 from __future__ import annotations
@@ -468,6 +469,7 @@ class ToastManager:
         self._root = None
         self._cards: list = []
         self._banner = None
+        self._panel = None
 
     # --------------------------------------------------------- الواجهة العامة
     def notify(self, analysis: Analysis, subject: str, actions: dict) -> None:
@@ -488,6 +490,10 @@ class ToastManager:
 
     def hide_banner(self) -> None:
         self.queue.put(("unbanner", None, None))
+
+    def show_panel(self, guard) -> None:
+        """يعرض لوحة التحكّم الصغيرة — تغني عن الاختصارات."""
+        self.queue.put(("panel", guard, None))
 
     def run(self, should_stop) -> None:
         """يُشغَّل في الخيط الرئيسي: حلقة tkinter مع فحص الطابور."""
@@ -512,6 +518,8 @@ class ToastManager:
                         self._build_banner(payload)
                     elif action == "unbanner":
                         self._destroy_banner()
+                    elif action == "panel":
+                        self._build_panel(payload)
                     else:
                         self._clear_cards()
                 except Exception as exc:
@@ -701,8 +709,8 @@ class ToastManager:
 
         self._button(body, "إيقاف", lambda: guard.set_away(False),
                      Palette.BTN_NEVER, small=True).pack(side="left")
-        tk.Label(body, text="Ctrl+Alt+A", bg=Palette.SURFACE, fg=Palette.FAINT,
-                 font=("Consolas", 8)).pack(side="left", padx=(0, 10))
+        tk.Label(body, text=str(guard.hotkeys["away"]), bg=Palette.SURFACE,
+                 fg=Palette.FAINT, font=("Consolas", 8)).pack(side="left", padx=(0, 10))
 
         def refresh() -> None:
             if self._banner is not banner:
@@ -729,6 +737,90 @@ class ToastManager:
             except Exception:
                 pass
             self._banner = None
+
+    # -------------------------------------------------- لوحة التحكّم
+    def _build_panel(self, guard) -> None:
+        """شريط تحكّم صغير دائم — يغني عن الاختصارات ولا يتعارض مع شيء.
+
+        يُوضع في الزاوية المقابلة للبطاقات حتى لا يحجبها، ويمكن سحبه
+        بالفأرة إلى أي مكان.
+        """
+        import tkinter as tk
+
+        if self._panel is not None:
+            return
+
+        panel = tk.Toplevel(self._root)
+        panel.overrideredirect(True)
+        panel.attributes("-topmost", True)
+        panel.attributes("-alpha", 0.93)
+        panel.configure(bg=Palette.SHELL)
+
+        body = tk.Frame(panel, bg=Palette.SURFACE, padx=10, pady=6)
+        body.pack(padx=1, pady=1)
+
+        dot = tk.Label(body, text="●", bg=Palette.SURFACE, fg=Palette.SAFE,
+                       font=("Segoe UI", 11))
+        dot.pack(side="left")
+
+        state = tk.Label(body, text="", bg=Palette.SURFACE, fg=Palette.MUTED,
+                         font=("Segoe UI", 8), width=9, anchor="w")
+        state.pack(side="left", padx=(3, 8))
+
+        pause_btn = self._button(body, "إيقاف مؤقّت", guard.toggle,
+                                 Palette.BTN_MUTED, Palette.TEXT, small=True)
+        pause_btn.pack(side="left", padx=(0, 5))
+
+        away_btn = self._button(body, "🌙 غياب", guard.toggle_away,
+                                Palette.BTN_AWAY, small=True)
+        away_btn.pack(side="left", padx=(0, 5))
+
+        self._button(body, "إنهاء", guard.stop, Palette.BTN_NEVER,
+                     small=True).pack(side="left")
+
+        # --- السحب بالفأرة ---
+        drag = {"x": 0, "y": 0}
+
+        def grab(event) -> None:
+            drag["x"], drag["y"] = event.x_root, event.y_root
+
+        def move(event) -> None:
+            dx, dy = event.x_root - drag["x"], event.y_root - drag["y"]
+            drag["x"], drag["y"] = event.x_root, event.y_root
+            panel.geometry(f"+{panel.winfo_x() + dx}+{panel.winfo_y() + dy}")
+
+        for widget in (body, dot, state):
+            widget.bind("<Button-1>", grab)
+            widget.bind("<B1-Motion>", move)
+
+        def refresh() -> None:
+            if self._panel is not panel:
+                return
+            try:
+                if guard.away:
+                    dot.config(fg=Palette.AWAY)
+                    state.config(text="غياب", fg=Palette.AWAY)
+                    away_btn.config(text="🌙 إيقاف الغياب")
+                elif guard.paused:
+                    dot.config(fg=Palette.WARN)
+                    state.config(text="متوقّف", fg=Palette.WARN)
+                    away_btn.config(text="🌙 غياب")
+                else:
+                    dot.config(fg=Palette.SAFE)
+                    state.config(text="يعمل", fg=Palette.MUTED)
+                    away_btn.config(text="🌙 غياب")
+                pause_btn.config(text="استئناف" if guard.paused else "إيقاف مؤقّت")
+                panel.after(700, refresh)
+            except Exception:
+                pass
+
+        panel.update_idletasks()
+        left, _top, _right, bottom = cursor_work_area()
+        panel.geometry(f"+{int(left + self.MARGIN)}"
+                       f"+{int(bottom - panel.winfo_reqheight() - self.MARGIN)}")
+
+        self._panel = panel
+        refresh()
 
     def _clear_cards(self) -> None:
         """يُغلق كل البطاقات المعروضة."""
@@ -763,6 +855,51 @@ class ToastManager:
                 continue
 
 
+# ============================================================== الاختصارات
+MODIFIER_NAMES = {"ctrl", "control", "alt", "shift", "win", "cmd", "super"}
+MODIFIER_ALIASES = {"control": "ctrl", "cmd": "win", "super": "win"}
+
+
+class Hotkey:
+    """اختصار لوحة مفاتيح: مجموعة مُعدِّلات وحرف واحد."""
+
+    def __init__(self, mods: set[str], letter: str) -> None:
+        self.mods = mods
+        self.letter = letter
+
+    def __str__(self) -> str:
+        order = [m for m in ("ctrl", "alt", "shift", "win") if m in self.mods]
+        return "+".join(order + [self.letter]).replace("ctrl", "Ctrl") \
+            .replace("alt", "Alt").replace("shift", "Shift").replace("win", "Win")
+
+    @classmethod
+    def parse(cls, spec: str) -> "Hotkey":
+        """يحوّل نصّاً مثل «ctrl+alt+shift+p» إلى اختصار."""
+        parts = [p.strip().lower() for p in spec.split("+") if p.strip()]
+        if len(parts) < 2:
+            raise ValueError(f"اختصار غير صالح: «{spec}» — مثال صحيح: ctrl+alt+shift+p")
+
+        *mod_names, letter = parts
+        if len(letter) != 1 or not letter.isalpha():
+            raise ValueError(f"«{letter}» ليس حرفاً مفرداً في الاختصار «{spec}»")
+
+        mods = set()
+        for name in mod_names:
+            if name not in MODIFIER_NAMES:
+                raise ValueError(f"مُعدِّل غير معروف: «{name}» في «{spec}»")
+            mods.add(MODIFIER_ALIASES.get(name, name))
+
+        return cls(mods, letter)
+
+
+# الافتراضي: ثلاثة مُعدِّلات معاً — نادراً ما تحجزها التطبيقات أو اللابتوب
+DEFAULT_HOTKEYS = {
+    "pause": Hotkey({"ctrl", "alt", "shift"}, "p"),
+    "away": Hotkey({"ctrl", "alt", "shift"}, "g"),
+    "quit": Hotkey({"ctrl", "alt", "shift"}, "x"),
+}
+
+
 # ================================================================== التسجيل
 def log(action: str, detail: str) -> None:
     stamp = dt.datetime.now().strftime("%H:%M:%S")
@@ -779,7 +916,8 @@ def log(action: str, detail: str) -> None:
 class Guard:
     def __init__(self, interval: float, live: bool, allow_edits: bool,
                  auto_deny: bool, keywords: tuple[str, ...],
-                 toasts: ToastManager, memory: Memory | None = None) -> None:
+                 toasts: ToastManager, memory: Memory | None = None,
+                 hotkeys: dict | None = None) -> None:
         self.interval = interval
         self.live = live
         self.allow_edits = allow_edits
@@ -787,6 +925,7 @@ class Guard:
         self.keywords = keywords
         self.toasts = toasts
         self.memory = memory if memory is not None else Memory().load()
+        self.hotkeys = hotkeys if hotkeys is not None else DEFAULT_HOTKEYS
 
         self._running = threading.Event()
         self._stopped = threading.Event()
@@ -1054,7 +1193,7 @@ class Guard:
         self.away = active
         if active:
             self.away_approved = self.away_held = 0
-            log("🌙 وضع الغياب", "قبول شامل — Ctrl+Alt+A أو زرّ الإيقاف لإنهائه")
+            log("🌙 وضع الغياب", f"قبول شامل — {self.hotkeys['away']} أو زرّ الإيقاف لإنهائه")
             self.toasts.show_banner(self)
         else:
             log("☀ انتهى الغياب",
@@ -1068,7 +1207,7 @@ class Guard:
     def toggle(self) -> None:
         if self._running.is_set():
             self._running.clear()
-            log("⏸ إيقاف مؤقّت", "Ctrl+Alt+S للاستئناف")
+            log("⏸ إيقاف مؤقّت", f"{self.hotkeys['pause']} أو زرّ اللوحة للاستئناف")
         else:
             self._running.set()
             log("▶ تشغيل", "فعّال" if self.live else "معاينة")
@@ -1081,37 +1220,55 @@ class Guard:
     def stopped(self) -> bool:
         return self._stopped.is_set()
 
+    @property
+    def paused(self) -> bool:
+        return not self._running.is_set()
+
     def start_background(self) -> None:
         """يبدأ خيط الفحص وخيط الاختصارات؛ الواجهة تبقى للخيط الرئيسي."""
         threading.Thread(target=self._loop, daemon=True).start()
 
         keyboard = self._keyboard
-        ctrl_keys = {keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r}
-        alt_keys = {keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r}
+        groups = {
+            "ctrl": {keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r},
+            "alt": {keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r,
+                    getattr(keyboard.Key, "alt_gr", keyboard.Key.alt)},
+            "shift": {keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r},
+            "win": {keyboard.Key.cmd, getattr(keyboard.Key, "cmd_l", keyboard.Key.cmd),
+                    getattr(keyboard.Key, "cmd_r", keyboard.Key.cmd)},
+        }
+        all_mods = set().union(*groups.values())
         held: set = set()
 
-        def matches(key, letter: str) -> bool:
+        def held_mods() -> set[str]:
+            return {name for name, keys in groups.items() if held & keys}
+
+        def is_letter(key, letter: str) -> bool:
             char = getattr(key, "char", None)
             if char:
                 if char.lower() == letter:
                     return True
+                # Ctrl+حرف يُنتج حرف تحكّم، و Shift يُنتج الحرف الكبير
                 if len(char) == 1 and ord(char) == ord(letter) - 96:
                     return True
             vk = getattr(key, "vk", None)
             return vk is not None and vk == ord(letter.upper())
 
         def on_press(key):
-            if key in ctrl_keys or key in alt_keys:
+            if key in all_mods:
                 held.add(key)
                 return None
-            combo = bool(held & ctrl_keys) and bool(held & alt_keys)
-            if combo and matches(key, "s"):
-                self.toggle()
-            elif combo and matches(key, "a"):
-                self.toggle_away()
-            elif combo and matches(key, "q"):
-                self.stop()
-                return False
+            mods = held_mods()
+            for action, hotkey in self.hotkeys.items():
+                if hotkey.mods == mods and is_letter(key, hotkey.letter):
+                    if action == "pause":
+                        self.toggle()
+                    elif action == "away":
+                        self.toggle_away()
+                    elif action == "quit":
+                        self.stop()
+                        return False
+                    break
             return None
 
         keyboard.Listener(on_press=on_press,
@@ -1122,7 +1279,7 @@ class Guard:
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="حارس أذونات Claude Code: يفهم كل طلب، يصنّفه، ثم يقبل أو ينبّهك.",
-        epilog="Ctrl+Alt+S = تشغيل/إيقاف | Ctrl+Alt+Q = إنهاء",
+        epilog="التحكّم من لوحة الشاشة الصغيرة، أو بالاختصارات أدناه.",
     )
     parser.add_argument("-i", "--interval", type=float, default=3.0,
                         help="الفاصل بين الفحوص بالثواني (الافتراضي: 3)")
@@ -1134,6 +1291,14 @@ def main() -> int:
                         help="لا توافق تلقائياً على كتابة/تعديل الملفات")
     parser.add_argument("--window", default="claude",
                         help="جزء من عنوان نافذة Claude Code (الافتراضي: claude)")
+    parser.add_argument("--key-pause", default="ctrl+alt+shift+p",
+                        help="اختصار الإيقاف المؤقّت (الافتراضي: ctrl+alt+shift+p)")
+    parser.add_argument("--key-away", default="ctrl+alt+shift+g",
+                        help="اختصار وضع الغياب (الافتراضي: ctrl+alt+shift+g)")
+    parser.add_argument("--key-quit", default="ctrl+alt+shift+x",
+                        help="اختصار الإنهاء (الافتراضي: ctrl+alt+shift+x)")
+    parser.add_argument("--no-panel", action="store_true",
+                        help="لا تعرض لوحة التحكّم الصغيرة على الشاشة")
     parser.add_argument("--toast-seconds", type=float, default=0.0,
                         help="إخفاء البطاقة بعد عدد ثوانٍ. الافتراضي 0 = تبقى "
                              "حتى تختار في Claude Code أو تنقرها")
@@ -1145,6 +1310,16 @@ def main() -> int:
     live = not args.dry_run
     keywords = tuple(w.strip().lower() for w in args.window.split(",") if w.strip())
 
+    try:
+        hotkeys = {
+            "pause": Hotkey.parse(args.key_pause),
+            "away": Hotkey.parse(args.key_away),
+            "quit": Hotkey.parse(args.key_quit),
+        }
+    except ValueError as exc:
+        parser.error(str(exc))
+        return 2
+
     print("=" * 62)
     print("  حارس أذونات Claude Code")
     print("=" * 62)
@@ -1155,13 +1330,19 @@ def main() -> int:
     print(f"  عند الرفض     : {'يرفض بنفسه (Esc)' if args.auto_deny else 'بطاقة حمراء والقرار لك'}")
     memory = Memory().load()
     print(f"  قرارات محفوظة : {len(memory.entries)} (راجعها بـ python memory.py)")
-    print("  بلا صوت · Ctrl+Alt+S تشغيل/إيقاف · Ctrl+Alt+Q إنهاء")
+    print(f"  إيقاف مؤقّت   : {hotkeys['pause']}")
+    print(f"  وضع الغياب    : {hotkeys['away']}")
+    print(f"  إنهاء         : {hotkeys['quit']}")
+    if not args.no_panel:
+        print("  ولوحة تحكّم صغيرة أسفل الشاشة تغني عن الاختصارات (اسحبها كما تشاء)")
     print("=" * 62)
 
     toasts = ToastManager(args.toast_seconds)
     guard = Guard(args.interval, live, not args.no_edits,
-                  args.auto_deny, keywords, toasts, memory)
+                  args.auto_deny, keywords, toasts, memory, hotkeys)
     guard.start_background()
+    if not args.no_panel:
+        toasts.show_panel(guard)
 
     try:
         toasts.run(lambda: guard.stopped)
