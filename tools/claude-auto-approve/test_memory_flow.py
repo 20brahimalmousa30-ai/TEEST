@@ -41,6 +41,7 @@ def build():
     m.find_claude_windows = lambda _kw: [(1, "Claude Code")]
     m.read_window_text = lambda _hwnd: state["text"]
     m.is_foreground = lambda _hwnd: True
+    m.focus_window = lambda _hwnd, tries=3: True
     guard.sent = []
     guard.send_approve = lambda always: guard.sent.append(("approve", always))
     guard.send_deny = lambda: guard.sent.append(("deny", None))

@@ -172,6 +172,32 @@ def is_foreground(hwnd: int) -> bool:
         return False
 
 
+def focus_window(hwnd: int, tries: int = 3) -> bool:
+    """يُحضِر نافذة إلى المقدّمة ويتأكّد أنها صارت النشطة.
+
+    لا يُستدعى إلا استجابةً لنقرة صريحة منك على أحد أزرار البطاقة —
+    فحين تنقر «وافق» تكون البطاقة هي النافذة النشطة لا Claude Code،
+    وبغير إحضارها تذهب الضغطة إلى الفراغ.
+    """
+    try:
+        user32 = _user32()
+    except AttributeError:
+        return False
+
+    for _attempt in range(tries):
+        try:
+            if user32.IsIconic(hwnd):
+                user32.ShowWindow(hwnd, 9)      # SW_RESTORE
+            user32.SetForegroundWindow(hwnd)
+            user32.BringWindowToTop(hwnd)
+        except Exception:
+            return False
+        time.sleep(0.12)
+        if is_foreground(hwnd):
+            return True
+    return is_foreground(hwnd)
+
+
 def cursor_work_area() -> tuple[int, int, int, int]:
     """حدود مساحة العمل في الشاشة التي عليها مؤشّر الفأرة.
 
@@ -406,12 +432,34 @@ def evaluate(text: str, allow_edits: bool = True) -> tuple[Analysis, str, str]:
 
 
 # ============================================================ بطاقة التنبيه
-class ToastManager:
-    """بطاقات حمراء صغيرة في زاوية الشاشة — بلا صوت وبلا سرقة تركيز."""
+class Palette:
+    """ألوان الواجهة — داكنة هادئة، والتمييز باللون لا بالضجيج."""
 
-    WIDTH = 430
+    SHELL = "#0d0d0f"       # حافة البطاقة
+    SURFACE = "#17171b"     # خلفية المحتوى
+    INSET = "#101013"       # خلفية قائمة الأجزاء
+    TEXT = "#ededf0"
+    MUTED = "#8b8b95"
+    FAINT = "#5c5c66"
+
+    DANGER = "#ef4444"
+    WARN = "#f59e0b"
+    SAFE = "#34d399"
+    AWAY = "#8b5cf6"
+
+    BTN_ONCE = "#2563eb"
+    BTN_ALWAYS = "#15803d"
+    BTN_NEVER = "#b91c1c"
+    BTN_AWAY = "#7c3aed"
+    BTN_MUTED = "#2a2a30"
+
+
+class ToastManager:
+    """بطاقات في زاوية الشاشة — بلا صوت وبلا سرقة تركيز."""
+
+    WIDTH = 460
     MARGIN = 18
-    GAP = 10
+    GAP = 12
 
     def __init__(self, seconds: float = 0.0) -> None:
         # 0 = تبقى البطاقة حتى تُحسم في Claude Code أو تُنقر
@@ -419,6 +467,7 @@ class ToastManager:
         self.queue: queue.Queue = queue.Queue()
         self._root = None
         self._cards: list = []
+        self._banner = None
 
     # --------------------------------------------------------- الواجهة العامة
     def notify(self, analysis: Analysis, subject: str, actions: dict) -> None:
@@ -432,6 +481,13 @@ class ToastManager:
     def resolve_all(self) -> None:
         """يُخفي كل البطاقات — يُستدعى حين يختفي الطلب من نافذة Claude Code."""
         self.queue.put(("hide", None, None))
+
+    def show_banner(self, guard) -> None:
+        """يعرض شريط «القبول الشامل مُفعّل» مع زرّ إيقافه."""
+        self.queue.put(("banner", guard, None))
+
+    def hide_banner(self) -> None:
+        self.queue.put(("unbanner", None, None))
 
     def run(self, should_stop) -> None:
         """يُشغَّل في الخيط الرئيسي: حلقة tkinter مع فحص الطابور."""
@@ -452,6 +508,10 @@ class ToastManager:
                 try:
                     if action == "show":
                         self._build_card(*payload)
+                    elif action == "banner":
+                        self._build_banner(payload)
+                    elif action == "unbanner":
+                        self._destroy_banner()
                     else:
                         self._clear_cards()
                 except Exception as exc:
@@ -461,52 +521,105 @@ class ToastManager:
         self._root.after(200, pump)
         self._root.mainloop()
 
+    # ------------------------------------------------------- أدوات الرسم
+    @staticmethod
+    def _button(parent, text, command, bg, fg="#ffffff", small=False):
+        """زرّ مسطّح مع تفاعل عند مرور المؤشّر."""
+        import tkinter as tk
+
+        button = tk.Button(
+            parent, text=text, command=command, bg=bg, fg=fg,
+            font=("Segoe UI", 8 if small else 9, "bold"), relief="flat",
+            padx=9 if small else 12, pady=3 if small else 6,
+            cursor="hand2", borderwidth=0, highlightthickness=0,
+            activebackground=bg, activeforeground=fg,
+        )
+        button.bind("<Enter>", lambda _e: button.config(bg=ToastManager._lift(bg)))
+        button.bind("<Leave>", lambda _e: button.config(bg=bg))
+        return button
+
+    @staticmethod
+    def _lift(color: str, amount: int = 22) -> str:
+        """يُفتّح لوناً سداسياً قليلاً — لتأثير مرور المؤشّر."""
+        try:
+            r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+        except (ValueError, IndexError):
+            return color
+        return "#%02x%02x%02x" % tuple(min(255, c + amount) for c in (r, g, b))
+
     # ------------------------------------------------------------ البناء
     def _build_card(self, analysis: Analysis, subject: str, actions: dict) -> None:
         import tkinter as tk
 
         partial = analysis.verdict == "partial"
-        accent = "#f59e0b" if partial else "#dc2626"   # برتقالي للجزئي، أحمر للمرفوض
-        heading = "⚠  طلب جزئيّ" if partial else "⛔  طلب مرفوض"
+        accent = Palette.WARN if partial else Palette.DANGER
+        heading = "طلب جزئيّ" if partial else "طلب مرفوض"
+        icon = "◐" if partial else "✕"
+
+        safe_count = len(analysis.safe_parts)
+        total = len(analysis.parts)
 
         card = tk.Toplevel(self._root)
         card.overrideredirect(True)
         card.attributes("-topmost", True)
-        card.configure(bg=accent)
+        card.configure(bg=Palette.SHELL)
 
-        body = tk.Frame(card, bg="#171717", padx=16, pady=12)
-        body.pack(padx=3, pady=3, fill="both", expand=True)
-        wrap = self.WIDTH - 44
+        body = tk.Frame(card, bg=Palette.SURFACE)
+        body.pack(padx=1, pady=1, fill="both", expand=True)
+        wrap = self.WIDTH - 52
 
-        def line(text, color, size, weight="normal", font="Segoe UI", pad=(0, 0)):
-            tk.Label(body, text=text, bg="#171717", fg=color,
+        # ---- شريط لوني علوي يحمل نوع الحكم ----
+        tk.Frame(body, bg=accent, height=3).pack(fill="x")
+
+        head = tk.Frame(body, bg=Palette.SURFACE, padx=18, pady=13)
+        head.pack(fill="x")
+        tk.Label(head, text=f"{heading}  {icon}", bg=Palette.SURFACE, fg=accent,
+                 font=("Segoe UI", 12, "bold"), anchor="e").pack(side="right")
+        if total > 1:
+            tk.Label(head, text=f"{safe_count}/{total} آمن", bg=Palette.SURFACE,
+                     fg=Palette.FAINT, font=("Consolas", 9), anchor="w"
+                     ).pack(side="left")
+
+        content = tk.Frame(body, bg=Palette.SURFACE, padx=18)
+        content.pack(fill="x")
+
+        def line(parent, text, color, size, weight="normal",
+                 font="Segoe UI", pad=(0, 0), width=None):
+            tk.Label(parent, text=text, bg=parent["bg"], fg=color,
                      font=(font, size, weight), anchor="e", justify="right",
-                     wraplength=wrap).pack(fill="x", pady=pad)
+                     wraplength=width or wrap).pack(fill="x", pady=pad)
 
-        line(heading, accent, 12, "bold")
-        line(f"يريد: {analysis.intent}", "#e5e5e5", 10, pad=(6, 0))
+        line(content, analysis.intent, Palette.TEXT, 10)
 
-        # --- تفصيل الأجزاء ---
+        # ---- الأجزاء ----
         if analysis.parts:
-            frame = tk.Frame(body, bg="#0f0f0f", padx=10, pady=8)
-            frame.pack(fill="x", pady=(10, 0))
-            for part in analysis.parts:
-                color = "#4ade80" if part.is_safe else "#f87171"
-                tk.Label(frame, text=f"{part.mark}  {part.text[:70]}",
-                         bg="#0f0f0f", fg=color, font=("Consolas", 9),
-                         anchor="e", justify="right", wraplength=wrap - 20
+            inset = tk.Frame(content, bg=Palette.INSET, padx=12, pady=10)
+            inset.pack(fill="x", pady=(12, 0))
+            for index, part in enumerate(analysis.parts):
+                if index:
+                    tk.Frame(inset, bg="#1c1c22", height=1).pack(fill="x", pady=7)
+                row = tk.Frame(inset, bg=Palette.INSET)
+                row.pack(fill="x")
+                colour = Palette.SAFE if part.is_safe else Palette.DANGER
+                tk.Label(row, text="●", bg=Palette.INSET, fg=colour,
+                         font=("Segoe UI", 9)).pack(side="left")
+                tk.Label(row, text=part.text[:72], bg=Palette.INSET,
+                         fg=Palette.TEXT if part.is_safe else "#f5a5a5",
+                         font=("Consolas", 9), anchor="e", justify="right",
+                         wraplength=wrap - 40).pack(side="right", fill="x", expand=True)
+                tk.Label(inset, text=f"{part.category} · {part.intent[:70]}",
+                         bg=Palette.INSET, fg=Palette.MUTED, font=("Segoe UI", 8),
+                         anchor="e", justify="right", wraplength=wrap - 24
                          ).pack(fill="x")
-                tk.Label(frame, text=f"{part.category} — {part.intent[:80]}",
-                         bg="#0f0f0f", fg="#8a8a8a", font=("Segoe UI", 8),
-                         anchor="e", justify="right", wraplength=wrap - 20
-                         ).pack(fill="x", pady=(0, 6))
 
-        line(analysis.suggestion, accent, 10, "bold", pad=(10, 0))
+        line(content, analysis.suggestion.replace("الاقتراح: ", "↪ "),
+             accent, 10, "bold", pad=(13, 0))
 
-        # --- الأزرار ---
-        buttons = tk.Frame(body, bg="#171717")
-        buttons.pack(fill="x", pady=(12, 0))
+        if not analysis.learnable:
+            line(content, "«اقبل دائماً» غير متاح — رُفض بقاعدة خطر صريحة",
+                 Palette.FAINT, 8, pad=(5, 0))
 
+        # ---- الأزرار ----
         def wrap_action(callback, note: str):
             def handler() -> None:
                 try:
@@ -516,28 +629,39 @@ class ToastManager:
                 dismiss()
             return handler
 
-        def add_button(text, command, bg, fg="#ffffff"):
-            tk.Button(buttons, text=text, command=command, bg=bg, fg=fg,
-                      font=("Segoe UI", 9), relief="flat", padx=10, pady=4,
-                      cursor="hand2", activebackground=bg, borderwidth=0
-                      ).pack(side="right", padx=(6, 0))
+        row_main = tk.Frame(body, bg=Palette.SURFACE, padx=18, pady=14)
+        row_main.pack(fill="x")
 
-        add_button("تجاهل", lambda: dismiss(), "#404040", "#d4d4d4")
+        self._button(row_main, "تجاهل", lambda: dismiss(),
+                     Palette.BTN_MUTED, Palette.MUTED).pack(side="right")
         if actions.get("never"):
-            add_button("ارفض دائماً",
-                       wrap_action(actions["never"], "رفض دائم"), "#7f1d1d")
+            self._button(row_main, "ارفض دائماً",
+                         wrap_action(actions["never"], "رفض دائم"),
+                         Palette.BTN_NEVER).pack(side="right", padx=(0, 7))
         if actions.get("always"):
-            add_button("اقبل دائماً",
-                       wrap_action(actions["always"], "قبول دائم"), "#166534")
+            self._button(row_main, "اقبل دائماً",
+                         wrap_action(actions["always"], "قبول دائم"),
+                         Palette.BTN_ALWAYS).pack(side="right", padx=(0, 7))
         if actions.get("once"):
-            add_button("وافق مرة واحدة",
-                       wrap_action(actions["once"], "موافقة لمرة"), "#1d4ed8")
+            self._button(row_main, "وافق الآن",
+                         wrap_action(actions["once"], "موافقة لمرة"),
+                         Palette.BTN_ONCE).pack(side="right", padx=(0, 7))
 
-        if not analysis.learnable:
-            line("«اقبل دائماً» غير متاح — رُفض بقاعدة خطر صريحة",
-                 "#737373", 8, pad=(8, 0))
+        # ---- صفّ وضع الغياب ----
+        if actions.get("away"):
+            away_row = tk.Frame(body, bg=Palette.SURFACE, padx=18, pady=(0, 12))
+            away_row.pack(fill="x")
+            self._button(away_row, "🌙 اقبل كل شيء حتى أوقفه",
+                         wrap_action(actions["away"], "وضع الغياب"),
+                         Palette.BTN_AWAY, small=True).pack(side="right")
+            tk.Label(away_row, text="للغياب عن الجهاز · قواعد الخطر تبقى تسألك",
+                     bg=Palette.SURFACE, fg=Palette.FAINT, font=("Segoe UI", 8),
+                     anchor="w").pack(side="left")
 
-        line("تختفي حين تختار في نافذة Claude Code", "#737373", 8, pad=(6, 0))
+        tk.Frame(body, bg="#1c1c22", height=1).pack(fill="x")
+        tk.Label(body, text="تختفي حين تختار في نافذة Claude Code",
+                 bg=Palette.SURFACE, fg=Palette.FAINT, font=("Segoe UI", 8),
+                 anchor="e", padx=18, pady=8).pack(fill="x")
 
         card.update_idletasks()
         self._place(card)
@@ -552,6 +676,59 @@ class ToastManager:
             card.after(int(self.seconds * 1000), dismiss)
 
         self._cards.append(card)
+
+    # ------------------------------------------------- شريط وضع الغياب
+    def _build_banner(self, guard) -> None:
+        """شريط ثابت أعلى الشاشة ما دام القبول الشامل مُفعّلاً."""
+        import tkinter as tk
+
+        self._destroy_banner()
+
+        banner = tk.Toplevel(self._root)
+        banner.overrideredirect(True)
+        banner.attributes("-topmost", True)
+        banner.configure(bg=Palette.AWAY)
+
+        body = tk.Frame(banner, bg=Palette.SURFACE, padx=16, pady=9)
+        body.pack(padx=2, pady=2, fill="both", expand=True)
+
+        tk.Label(body, text="🌙  القبول الشامل مُفعّل", bg=Palette.SURFACE,
+                 fg=Palette.AWAY, font=("Segoe UI", 10, "bold")).pack(side="right")
+
+        counter = tk.Label(body, text="", bg=Palette.SURFACE, fg=Palette.MUTED,
+                           font=("Consolas", 9))
+        counter.pack(side="right", padx=14)
+
+        self._button(body, "إيقاف", lambda: guard.set_away(False),
+                     Palette.BTN_NEVER, small=True).pack(side="left")
+        tk.Label(body, text="Ctrl+Alt+A", bg=Palette.SURFACE, fg=Palette.FAINT,
+                 font=("Consolas", 8)).pack(side="left", padx=(0, 10))
+
+        def refresh() -> None:
+            if self._banner is not banner:
+                return
+            try:
+                counter.config(text=f"قُبل {guard.away_approved}"
+                                    f"  ·  أُوقف {guard.away_held}")
+                banner.after(1000, refresh)
+            except Exception:
+                pass
+
+        banner.update_idletasks()
+        left, top, right, _bottom = cursor_work_area()
+        width = banner.winfo_reqwidth()
+        banner.geometry(f"+{int((left + right - width) // 2)}+{int(top + 12)}")
+
+        self._banner = banner
+        refresh()
+
+    def _destroy_banner(self) -> None:
+        if self._banner is not None:
+            try:
+                self._banner.destroy()
+            except Exception:
+                pass
+            self._banner = None
 
     def _clear_cards(self) -> None:
         """يُغلق كل البطاقات المعروضة."""
@@ -620,6 +797,13 @@ class Guard:
         self._last_note = ""
         self.approved = 0
         self.rejected = 0
+
+        # وضع الغياب: يقبل حتى ما لا يعرفه، حتى توقفه بنفسك.
+        # قواعد الخطر تبقى نافذة — لا يُقبل حذفٌ ولا تسريبٌ ولا وصولٌ
+        # إلى أسرار وأنت بعيد عن الجهاز، بل تُحفظ وتنتظر عودتك.
+        self.away = False
+        self.away_approved = 0
+        self.away_held = 0
 
         from pynput import keyboard
         self._keyboard = keyboard
@@ -747,6 +931,19 @@ class Guard:
             self._approve(hwnd, prompt, analysis, subject, text)
             return
 
+        # ------------------------------- ٣) وضع الغياب: يقبل المجهول
+        if self.away and analysis.learnable:
+            self._handled_text = text
+            self.away_approved += 1
+            log("🌙 قبول (غياب)", f"[{analysis.category}] {subject}")
+            self._approve(hwnd, prompt, analysis, subject, text, note="وضع الغياب")
+            return
+
+        if self.away:
+            # قاعدة خطر صريحة: لا تُقبل ولو كنت غائباً
+            self.away_held += 1
+            log("🌙 أُوقف رغم الغياب", f"[{analysis.category}] {subject} — ينتظر عودتك")
+
         # ------------------------------------------ ٣) مرفوض أو جزئيّ
         self._handled_text = text
         self.rejected += 1
@@ -802,8 +999,10 @@ class Guard:
         """يربط أزرار البطاقة بالإجراءات الفعلية."""
 
         def approve_once() -> None:
-            if not is_foreground(hwnd):
-                log("⏳ مؤجّل", "انتقل إلى نافذة Claude Code ثم أعد المحاولة")
+            # نقرتك إجراء صريح، فنُحضِر نافذة Claude Code ثم نضغط —
+            # وإلا ذهبت الضغطة إلى البطاقة التي نقرتَها للتوّ.
+            if not focus_window(hwnd):
+                log("⏳ مؤجّل", "تعذّر إحضار نافذة Claude Code — افتحها وأعد المحاولة")
                 return
             self.send_approve(always=prompt.has_always)
             self.approved += 1
@@ -819,13 +1018,18 @@ class Guard:
             self.memory.learn(tool, argument, "reject",
                               analysis.category, analysis.intent)
             log("📚 تعلّم", f"سيُرفض تلقائياً من الآن: {tool} {argument}".strip())
-            if self.live and is_foreground(hwnd):
+            if self.live and focus_window(hwnd):
                 self.send_deny()
+
+        def accept_all() -> None:
+            self.set_away(True)
+            approve_once()
 
         return {
             "once": approve_once,
             "always": approve_always if analysis.learnable else None,
             "never": reject_always,
+            "away": accept_all,
         }
 
     def _loop(self) -> None:
@@ -841,6 +1045,24 @@ class Guard:
                    and not self._stopped.is_set()):
                 time.sleep(0.05)
                 waited += 0.05
+
+    # --------------------------------------------------------- وضع الغياب
+    def set_away(self, active: bool) -> None:
+        """يفعّل القبول الشامل أو يوقفه، ويُظهر شريط الحالة أو يُخفيه."""
+        if self.away == active:
+            return
+        self.away = active
+        if active:
+            self.away_approved = self.away_held = 0
+            log("🌙 وضع الغياب", "قبول شامل — Ctrl+Alt+A أو زرّ الإيقاف لإنهائه")
+            self.toasts.show_banner(self)
+        else:
+            log("☀ انتهى الغياب",
+                f"قُبل تلقائياً: {self.away_approved} | أُوقف للمراجعة: {self.away_held}")
+            self.toasts.hide_banner()
+
+    def toggle_away(self) -> None:
+        self.set_away(not self.away)
 
     # ------------------------------------------------------------- التحكّم
     def toggle(self) -> None:
@@ -885,6 +1107,8 @@ class Guard:
             combo = bool(held & ctrl_keys) and bool(held & alt_keys)
             if combo and matches(key, "s"):
                 self.toggle()
+            elif combo and matches(key, "a"):
+                self.toggle_away()
             elif combo and matches(key, "q"):
                 self.stop()
                 return False

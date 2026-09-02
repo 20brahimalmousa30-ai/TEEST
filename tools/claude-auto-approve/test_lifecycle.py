@@ -55,6 +55,7 @@ def run() -> int:
     m.find_claude_windows = lambda _kw: [(1, "Claude Code")]
     m.read_window_text = lambda _hwnd: state["text"]
     m.is_foreground = lambda _hwnd: state["focused"]
+    m.focus_window = lambda _hwnd, tries=3: state["focused"]
     guard.send_approve = lambda always: toasts.events.append(("approve", always))
 
     failures = []
