@@ -7,7 +7,7 @@
 
 import sys
 
-from classifier import classify
+from classifier import analyze
 
 SAMPLES = [
     "git status",
@@ -21,6 +21,7 @@ SAMPLES = [
     "ls -la",
     "tsc --noEmit",
     "git status && npm test",
+    "git add . && git commit -m fix && git push --force",
     "rm -rf node_modules",
     "git push --force origin main",
     "git reset --hard",
@@ -39,12 +40,18 @@ SAMPLES = [
 ]
 
 
+MARKS = {"approve": "✅ قبول", "partial": "⚠ جزئي", "reject": "⛔ رفض "}
+
+
 def show(command: str) -> None:
-    d = classify(command)
-    mark = "✅ قبول" if d.is_safe else "⛔ رفض "
-    print(f"{mark} │ {d.category:32} │ {command}")
-    if not d.is_safe:
-        print(f"        │ {'السبب: ' + d.reason}")
+    a = analyze("Bash", command)
+    print(f"{MARKS[a.verdict]} │ {a.category:30} │ {command}")
+    print(f"        │ يريد: {a.intent}")
+    if len(a.parts) > 1:
+        for part in a.parts:
+            print(f"        │   {part.mark} {part.text}")
+    if a.verdict != "approve":
+        print(f"        │ {a.suggestion}")
 
 
 def main() -> int:

@@ -162,6 +162,7 @@ SAFE_RULES: list[tuple[str, str, str]] = [
                  r"rev-parse|describe|blame|shortlog|ls-files)\b", Cat.GIT_STATUS),
     ("git-fetch", r"^git\s+(fetch|pull)\b", Cat.GIT_SYNC),
     ("git-stage", r"^git\s+(add|restore\s+--staged)\b", Cat.GIT_STAGE),
+    ("git-commit", r"^git\s+commit\b", Cat.GIT_STAGE),
     ("list-files", r"^(ls|dir|pwd|tree|Get-ChildItem|Get-Location)\b", Cat.READ),
     ("read-files", r"^(cat|head|tail|less|more|wc|file|stat|Get-Content)\b", Cat.READ),
     ("search", r"^(grep|rg|ripgrep|find|fd|ag|Select-String)\b", Cat.SEARCH),
@@ -328,3 +329,148 @@ def classify_request(tool: str, argument: str, allow_edits: bool = True) -> Deci
                         "network", arg)
 
     return Decision("alert", Cat.UNKNOWN, f"أداة غير معروفة: {name}", "unknown-tool", arg)
+
+
+# ================================================ تحليل الطلب جزءاً جزءاً
+from explain import explain_command, explain_request  # noqa: E402
+
+# التصنيفات الوحيدة التي يجوز تعليم الأداة قبولها دائماً.
+#
+# الفكرة: «أمر غير معروف» يعني أن الأداة لا تفهمه، لا أنها رأت فيه خطراً —
+# فيصحّ أن تعلّمها إياه بنقرة. أما ما رُفض بقاعدة خطر صريحة (حذف، تسريب،
+# أسرار، صلاحيات…) فلا يُلغى بنقرة زرّ؛ إلغاؤه يحتاج تعديلاً واعياً
+# في DANGER_RULES داخل هذا الملفّ.
+LEARNABLE_CATEGORIES = {Cat.UNKNOWN}
+
+
+@dataclass
+class Part:
+    """مقطع واحد من الطلب مع حكمه."""
+
+    text: str
+    verdict: str        # approve أو alert
+    category: str
+    reason: str
+    intent: str         # ماذا يفعل هذا المقطع بالعربية
+
+    @property
+    def is_safe(self) -> bool:
+        return self.verdict == "approve"
+
+    @property
+    def mark(self) -> str:
+        return "✅" if self.is_safe else "⛔"
+
+
+@dataclass
+class Analysis:
+    """تحليل طلب كامل: نيّته، أجزاؤه، والاقتراح."""
+
+    verdict: str              # approve | partial | reject
+    category: str
+    intent: str               # ماذا يريد Claude Code من هذا الطلب
+    suggestion: str           # الاقتراح العربي المعروض
+    reason: str = ""          # سبب الرفض إن وُجد
+    parts: list[Part] = field(default_factory=list)
+
+    @property
+    def is_safe(self) -> bool:
+        return self.verdict == "approve"
+
+    @property
+    def safe_parts(self) -> list[Part]:
+        return [p for p in self.parts if p.is_safe]
+
+    @property
+    def unsafe_parts(self) -> list[Part]:
+        return [p for p in self.parts if not p.is_safe]
+
+    @property
+    def learnable(self) -> bool:
+        """هل يجوز تعليم الأداة قبول هذا الطلب دائماً؟
+
+        نعم فقط إن كان سبب الرفض «لا أعرف هذا الأمر». أما ما رُفض
+        بقاعدة خطر صريحة فلا يُقبل دائماً بنقرة زرّ.
+        """
+        rejected = self.unsafe_parts
+        if not rejected:
+            return True
+        return all(part.category in LEARNABLE_CATEGORIES for part in rejected)
+
+
+def classify_part(segment: str) -> Part:
+    """يحكم على مقطع واحد من أمر مركّب."""
+    intent = explain_command(segment)
+
+    danger = find_danger(segment)
+    if danger:
+        _rule_id, category, why, _matched = danger
+        return Part(segment, "alert", category, why, intent)
+
+    safe = match_safe(segment)
+    if safe is None:
+        return Part(segment, "alert", Cat.UNKNOWN,
+                    "لا أعرف ماذا يفعل هذا الأمر — لم أقبله احتياطاً", intent)
+
+    return Part(segment, "approve", safe[1], "أمر معروف وآمن", intent)
+
+
+def _suggestion_for(verdict: str, safe_count: int, total: int) -> str:
+    if verdict == "approve":
+        return "الاقتراح: الموافقة على الكل"
+    if verdict == "partial":
+        return (f"الاقتراح: الموافقة على البعض — {safe_count} من {total} أجزاء آمنة، "
+                "والباقي يحتاج قرارك")
+    return "الاقتراح: الرفض"
+
+
+def analyze(tool: str, argument: str, allow_edits: bool = True) -> Analysis:
+    """يحلّل طلب إذن كاملاً: نيّته، أجزاؤه، وحكم كل جزء.
+
+    يعيد حكماً من ثلاثة:
+      approve  — كل الأجزاء آمنة
+      partial  — بعضها آمن وبعضها لا
+      reject   — لا شيء منها آمن
+    """
+    name = (tool or "").strip().lower()
+    arg = (argument or "").strip().strip("`\"'").strip()
+    intent = explain_request(tool, arg)
+
+    if not arg:
+        return Analysis("reject", Cat.UNREADABLE, intent,
+                        "الاقتراح: الرفض", "الطلب بلا مُعامل واضح")
+
+    # الأدوات غير التنفيذية: جزء واحد، يحكمه classify_request
+    if name and name not in EXEC_TOOLS:
+        decision = classify_request(tool, arg, allow_edits)
+        part = Part(arg, decision.verdict, decision.category, decision.reason, intent)
+        verdict = "approve" if decision.is_safe else "reject"
+        return Analysis(verdict, decision.category, intent,
+                        _suggestion_for(verdict, int(decision.is_safe), 1),
+                        "" if decision.is_safe else decision.reason, [part])
+
+    # أوامر الصدفة: نحكم على كل مقطع على حدة
+    segments = split_segments(arg) or [arg]
+    parts = [classify_part(segment) for segment in segments]
+
+    safe_count = sum(1 for p in parts if p.is_safe)
+    if safe_count == len(parts):
+        verdict = "approve"
+    elif safe_count == 0:
+        verdict = "reject"
+    else:
+        verdict = "partial"
+
+    unsafe = [p for p in parts if not p.is_safe]
+    category = unsafe[0].category if unsafe else " + ".join(
+        dict.fromkeys(p.category for p in parts))
+    reason = unsafe[0].reason if unsafe else ""
+
+    # أمر مركّب ⇒ الشرح يلخّص كل الخطوات، لا الخطوة الأولى وحدها
+    if len(parts) > 1:
+        steps = " ثم ".join(dict.fromkeys(p.category for p in parts))
+        intent = f"{len(parts)} خطوات متتالية: {steps}"
+
+    return Analysis(verdict, category, intent,
+                    _suggestion_for(verdict, safe_count, len(parts)),
+                    reason, parts)

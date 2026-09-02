@@ -12,10 +12,12 @@ class FakeToasts:
     def __init__(self):
         self.events = []
         self.visible = 0
+        self.last_actions = {}
 
-    def notify(self, decision, subject):
-        self.events.append(("show", decision.category))
+    def notify(self, analysis, subject, actions=None):
+        self.events.append(("show", analysis.category))
         self.visible += 1
+        self.last_actions = actions or {}
 
     def resolve_all(self):
         self.events.append(("hide", None))
@@ -43,8 +45,11 @@ STEPS = [
 
 def run() -> int:
     toasts = FakeToasts()
+    import tempfile, pathlib as _pl
+    from memory import Memory
+    store = Memory(path=_pl.Path(tempfile.mkdtemp()) / "learned.json").load()
     guard = m.Guard(0.1, live=True, allow_edits=True, auto_deny=False,
-                    keywords=("claude",), toasts=toasts)
+                    keywords=("claude",), toasts=toasts, memory=store)
 
     state = {"text": IDLE, "focused": True}
     m.find_claude_window = lambda _kw: (1, "Claude Code")

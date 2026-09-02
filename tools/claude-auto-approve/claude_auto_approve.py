@@ -31,7 +31,9 @@ import threading
 import time
 from pathlib import Path
 
-from classifier import Cat, Decision, classify_request, find_danger
+from classifier import Analysis, Cat, Part, analyze, find_danger
+from explain import explain_request
+from memory import Memory
 
 LOG_PATH = Path(__file__).with_name("auto_approve.log")
 
@@ -218,25 +220,31 @@ def extract_request(text: str) -> tuple[str, str] | None:
     return None
 
 
-def evaluate(text: str, allow_edits: bool = True) -> tuple[Decision, str | None]:
-    """يقيّم نصّ نافذة الإذن ويعيد (القرار، وصف الطلب المعروض للمستخدم)."""
-    # نستخرج الطلب أولاً حتى تعرض البطاقة الأمر كاملاً حتى عند اكتشاف خطر
+def evaluate(text: str, allow_edits: bool = True) -> tuple[Analysis, str, str]:
+    """يحلّل نصّ نافذة الإذن ويعيد (التحليل، اسم الأداة، المُعامل)."""
     request = extract_request(text)
-    label = f"{request[0]} {request[1]}".strip() if request else None
 
-    # الخطر يُفحص على النصّ كاملاً — يلتقط إشارة الخطر أينما وردت،
-    # حتى لو فشل الاستخراج أو ورد الخطر في سطر وصفيّ.
+    # فحص الخطر على النصّ كاملاً — يلتقط إشارة الخطر أينما وردت،
+    # حتى لو فشل الاستخراج أو ورد الخطر في سطر وصفيّ خارج الأمر.
     danger = find_danger(text)
     if danger:
-        rule_id, category, why, matched = danger
-        return Decision("alert", category, why, rule_id, matched), label or matched
+        _rule_id, category, why, matched = danger
+        tool, argument = request if request else ("", matched)
+        intent = explain_request(tool, argument)
+        part = Part(argument, "alert", category, why, intent)
+        return Analysis("reject", category, intent,
+                        "الاقتراح: الرفض", why, [part]), tool, argument
 
     if request is None:
-        return Decision("alert", Cat.UNREADABLE,
-                        "تعذّرت قراءة نصّ الطلب — لم أوافق احتياطاً", "no-request"), None
+        part = Part("", "alert", Cat.UNREADABLE, "تعذّرت قراءة نصّ الطلب", "")
+        return Analysis("reject", Cat.UNREADABLE,
+                        "طلب تعذّرت قراءته من النافذة",
+                        "الاقتراح: الرفض",
+                        "تعذّرت قراءة نصّ الطلب — لم أوافق احتياطاً",
+                        [part]), "", ""
 
     tool, argument = request
-    return classify_request(tool, argument, allow_edits), label
+    return analyze(tool, argument, allow_edits), tool, argument
 
 
 # ============================================================ بطاقة التنبيه
@@ -255,9 +263,13 @@ class ToastManager:
         self._cards: list = []
 
     # --------------------------------------------------------- الواجهة العامة
-    def notify(self, decision: Decision, subject: str) -> None:
-        """يُستدعى من أي خيط — يضع طلب عرض البطاقة في الطابور."""
-        self.queue.put(("show", decision, subject))
+    def notify(self, analysis: Analysis, subject: str, actions: dict) -> None:
+        """يُستدعى من أي خيط — يضع طلب عرض البطاقة في الطابور.
+
+        `actions` يربط أزرار البطاقة بدوالّ الحارس:
+        once (وافق مرة) · always (اقبل دائماً) · never (ارفض دائماً)
+        """
+        self.queue.put(("show", (analysis, subject, actions), None))
 
     def resolve_all(self) -> None:
         """يُخفي كل البطاقات — يُستدعى حين يختفي الطلب من نافذة Claude Code."""
@@ -276,53 +288,98 @@ class ToastManager:
                 return
             while True:
                 try:
-                    action, decision, subject = self.queue.get_nowait()
+                    action, payload, _extra = self.queue.get_nowait()
                 except queue.Empty:
                     break
                 try:
                     if action == "show":
-                        self._build_card(decision, subject)
+                        self._build_card(*payload)
                     else:
                         self._clear_cards()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    log("خطأ", f"تعذّر رسم البطاقة: {type(exc).__name__}: {exc}")
             self._root.after(200, pump)
 
         self._root.after(200, pump)
         self._root.mainloop()
 
     # ------------------------------------------------------------ البناء
-    def _build_card(self, decision: Decision, subject: str) -> None:
+    def _build_card(self, analysis: Analysis, subject: str, actions: dict) -> None:
         import tkinter as tk
+
+        partial = analysis.verdict == "partial"
+        accent = "#f59e0b" if partial else "#dc2626"   # برتقالي للجزئي، أحمر للمرفوض
+        heading = "⚠  طلب جزئيّ" if partial else "⛔  طلب مرفوض"
 
         card = tk.Toplevel(self._root)
         card.overrideredirect(True)
         card.attributes("-topmost", True)
-        card.configure(bg="#dc2626")          # الإطار الأحمر
+        card.configure(bg=accent)
 
         body = tk.Frame(card, bg="#171717", padx=16, pady=12)
         body.pack(padx=3, pady=3, fill="both", expand=True)
+        wrap = self.WIDTH - 44
 
-        tk.Label(body, text="⛔  طلب مرفوض", bg="#171717", fg="#f87171",
-                 font=("Segoe UI", 12, "bold"), anchor="e",
-                 justify="right").pack(fill="x")
+        def line(text, color, size, weight="normal", font="Segoe UI", pad=(0, 0)):
+            tk.Label(body, text=text, bg="#171717", fg=color,
+                     font=(font, size, weight), anchor="e", justify="right",
+                     wraplength=wrap).pack(fill="x", pady=pad)
 
-        tk.Label(body, text=f"التصنيف: {decision.category}", bg="#171717",
-                 fg="#fca5a5", font=("Segoe UI", 11, "bold"), anchor="e",
-                 justify="right", wraplength=self.WIDTH - 40).pack(fill="x", pady=(6, 0))
+        line(heading, accent, 12, "bold")
+        line(f"يريد: {analysis.intent}", "#e5e5e5", 10, pad=(6, 0))
 
-        tk.Label(body, text=decision.reason, bg="#171717", fg="#e5e5e5",
-                 font=("Segoe UI", 10), anchor="e", justify="right",
-                 wraplength=self.WIDTH - 40).pack(fill="x", pady=(4, 0))
+        # --- تفصيل الأجزاء ---
+        if analysis.parts:
+            frame = tk.Frame(body, bg="#0f0f0f", padx=10, pady=8)
+            frame.pack(fill="x", pady=(10, 0))
+            for part in analysis.parts:
+                color = "#4ade80" if part.is_safe else "#f87171"
+                tk.Label(frame, text=f"{part.mark}  {part.text[:70]}",
+                         bg="#0f0f0f", fg=color, font=("Consolas", 9),
+                         anchor="e", justify="right", wraplength=wrap - 20
+                         ).pack(fill="x")
+                tk.Label(frame, text=f"{part.category} — {part.intent[:80]}",
+                         bg="#0f0f0f", fg="#8a8a8a", font=("Segoe UI", 8),
+                         anchor="e", justify="right", wraplength=wrap - 20
+                         ).pack(fill="x", pady=(0, 6))
 
-        if subject:
-            tk.Label(body, text=subject[:150], bg="#171717", fg="#a3a3a3",
-                     font=("Consolas", 9), anchor="e", justify="right",
-                     wraplength=self.WIDTH - 40).pack(fill="x", pady=(8, 0))
+        line(analysis.suggestion, accent, 10, "bold", pad=(10, 0))
 
-        tk.Label(body, text="تختفي حين تختار في نافذة Claude Code · أو انقرها الآن",
-                 bg="#171717", fg="#737373", font=("Segoe UI", 8), anchor="e",
-                 justify="right").pack(fill="x", pady=(10, 0))
+        # --- الأزرار ---
+        buttons = tk.Frame(body, bg="#171717")
+        buttons.pack(fill="x", pady=(12, 0))
+
+        def wrap_action(callback, note: str):
+            def handler() -> None:
+                try:
+                    callback()
+                except Exception as exc:
+                    log("خطأ", f"{note}: {type(exc).__name__}: {exc}")
+                dismiss()
+            return handler
+
+        def add_button(text, command, bg, fg="#ffffff"):
+            tk.Button(buttons, text=text, command=command, bg=bg, fg=fg,
+                      font=("Segoe UI", 9), relief="flat", padx=10, pady=4,
+                      cursor="hand2", activebackground=bg, borderwidth=0
+                      ).pack(side="right", padx=(6, 0))
+
+        add_button("تجاهل", lambda: dismiss(), "#404040", "#d4d4d4")
+        if actions.get("never"):
+            add_button("ارفض دائماً",
+                       wrap_action(actions["never"], "رفض دائم"), "#7f1d1d")
+        if actions.get("always"):
+            add_button("اقبل دائماً",
+                       wrap_action(actions["always"], "قبول دائم"), "#166534")
+        if actions.get("once"):
+            add_button("وافق مرة واحدة",
+                       wrap_action(actions["once"], "موافقة لمرة"), "#1d4ed8")
+
+        if not analysis.learnable:
+            line("«اقبل دائماً» غير متاح — رُفض بقاعدة خطر صريحة",
+                 "#737373", 8, pad=(8, 0))
+
+        line("تختفي حين تختار في نافذة Claude Code", "#737373", 8, pad=(6, 0))
 
         card.update_idletasks()
         self._place(card)
@@ -333,9 +390,6 @@ class ToastManager:
             card.destroy()
             self._restack()
 
-        card.bind("<Button-1>", dismiss)
-        for child in body.winfo_children():
-            child.bind("<Button-1>", dismiss)
         if self.seconds > 0:
             card.after(int(self.seconds * 1000), dismiss)
 
@@ -390,13 +444,14 @@ def log(action: str, detail: str) -> None:
 class Guard:
     def __init__(self, interval: float, live: bool, allow_edits: bool,
                  auto_deny: bool, keywords: tuple[str, ...],
-                 toasts: ToastManager) -> None:
+                 toasts: ToastManager, memory: Memory | None = None) -> None:
         self.interval = interval
         self.live = live
         self.allow_edits = allow_edits
         self.auto_deny = auto_deny
         self.keywords = keywords
         self.toasts = toasts
+        self.memory = memory if memory is not None else Memory().load()
 
         self._running = threading.Event()
         self._stopped = threading.Event()
@@ -447,7 +502,10 @@ class Guard:
 
         prompt = detect_prompt(text)
         if prompt is None:
-            # لم يعد هناك طلب معروض ⇒ حُسم الطلب في Claude Code، فتُخفى البطاقة
+            # لم يعد هناك طلب معروض ⇒ حُسم الطلب في Claude Code، فتُخفى البطاقة.
+            # ونمسح ذاكرة النصّ المعالَج حتى يُعامَل ظهور الأمر نفسه لاحقاً
+            # كطلب جديد لا كتكرارٍ يُتجاهَل.
+            self._handled_text = ""
             if self._alert_showing:
                 self.toasts.resolve_all()
                 self._alert_showing = False
@@ -457,42 +515,48 @@ class Guard:
         if text == self._handled_text:
             return
 
-        decision, request = evaluate(text, self.allow_edits)
-        subject = request or decision.matched or "(غير معروف)"
+        analysis, tool, argument = evaluate(text, self.allow_edits)
+        subject = f"{tool} {argument}".strip() or "(غير معروف)"
 
-        # ------------------------------------------------------ مقبول
-        if decision.is_safe:
-            if not self.live:
+        # --------------------------------------- ١) قرار محفوظ لأمر متكرّر
+        remembered = self.memory.recall(tool, argument)
+        if remembered is not None:
+            # الرفض المحفوظ يُطبَّق دائماً. أما القبول المحفوظ فلا يُطبَّق
+            # إلا إن بقي الطلب من النوع الذي يجوز تعلّمه — فلو صار يطابق
+            # قاعدة خطر صريحة (تغيّر الأمر أو تحدّثت القواعد) نتجاهل الذاكرة.
+            honour = remembered.verdict == "reject" or analysis.learnable
+            if honour:
+                self.memory.apply(tool, argument)
                 self._handled_text = text
-                log("👁 معاينة", f"[{decision.category}] {subject}")
+                if remembered.verdict == "approve":
+                    self._approve(hwnd, prompt, analysis, subject, text,
+                                  note="قرار محفوظ")
+                else:
+                    self.rejected += 1
+                    log("⛔ رفض محفوظ", f"[{remembered.category}] {subject}")
+                    if self.live and self.auto_deny and is_foreground(hwnd):
+                        self.send_deny()
                 return
+            log("⚠ تُجوهلت الذاكرة", f"{subject} — صار يطابق قاعدة خطر")
 
-            # لا نرسل مفاتيح إلا ونافذة Claude Code هي النشطة —
-            # وإلا ذهبت الضغطة إلى التطبيق الذي تعمل عليه أنت.
-            if not is_foreground(hwnd):
-                if self._waiting_text != text:
-                    self._waiting_text = text
-                    log("⏳ بانتظارك", f"[{decision.category}] {subject} — سأوافق حين تعود إلى Claude Code")
-                return
-
-            self._waiting_text = ""
-            self._handled_text = text
-            self.send_approve(always=prompt.has_always)
-            self.approved += 1
-            choice = "Always allow" if prompt.has_always else "الخيار الوحيد"
-            log("✅ قبول", f"[{decision.category}] {subject} → {choice}")
+        # --------------------------------------------------- ٢) طلب مقبول
+        if analysis.is_safe:
+            self._approve(hwnd, prompt, analysis, subject, text)
             return
 
-        # ------------------------------------------------------- مرفوض
+        # ------------------------------------------ ٣) مرفوض أو جزئيّ
         self._handled_text = text
         self.rejected += 1
-        log("⛔ رفض", f"[{decision.category}] {subject}")
-        log("   السبب", decision.reason)
+        head = "⚠ جزئيّ" if analysis.verdict == "partial" else "⛔ رفض"
+        log(head, f"[{analysis.category}] {subject}")
+        log("   يريد", analysis.intent)
+        log("   السبب", analysis.reason)
+        log("   ↪", analysis.suggestion)
 
-        # أخفِ بطاقة الطلب السابق قبل عرض الجديدة
         if self._alert_showing:
             self.toasts.resolve_all()
-        self.toasts.notify(decision, subject)
+        self.toasts.notify(analysis, subject,
+                           self._card_actions(hwnd, prompt, analysis, tool, argument))
         self._alert_showing = True
 
         if self.live and self.auto_deny:
@@ -501,6 +565,65 @@ class Guard:
                 log("   الإجراء", "أُرسل الرفض (Esc)")
             else:
                 log("   الإجراء", "الرفض التلقائي مؤجّل — Claude Code ليست النافذة النشطة")
+
+    # --------------------------------------------------------- الموافقة
+    def _approve(self, hwnd: int, prompt: Prompt, analysis: Analysis,
+                 subject: str, text: str, note: str = "") -> None:
+        """يوافق على الطلب، بشرط أن تكون نافذة Claude Code هي النشطة."""
+        if not self.live:
+            self._handled_text = text
+            log("👁 معاينة", f"[{analysis.category}] {subject}")
+            return
+
+        # لا نرسل مفاتيح إلا ونافذة Claude Code هي النشطة —
+        # وإلا ذهبت الضغطة إلى التطبيق الذي تعمل عليه أنت.
+        if not is_foreground(hwnd):
+            if self._waiting_text != text:
+                self._waiting_text = text
+                log("⏳ بانتظارك",
+                    f"[{analysis.category}] {subject} — سأوافق حين تعود إلى Claude Code")
+            self._handled_text = ""
+            return
+
+        self._waiting_text = ""
+        self._handled_text = text
+        self.send_approve(always=prompt.has_always)
+        self.approved += 1
+        choice = "Always allow" if prompt.has_always else "الخيار الوحيد"
+        suffix = f" ({note})" if note else ""
+        log("✅ قبول" + suffix, f"[{analysis.category}] {subject} → {choice}")
+
+    # ------------------------------------------------- أزرار البطاقة
+    def _card_actions(self, hwnd: int, prompt: Prompt, analysis: Analysis,
+                      tool: str, argument: str) -> dict:
+        """يربط أزرار البطاقة بالإجراءات الفعلية."""
+
+        def approve_once() -> None:
+            if not is_foreground(hwnd):
+                log("⏳ مؤجّل", "انتقل إلى نافذة Claude Code ثم أعد المحاولة")
+                return
+            self.send_approve(always=prompt.has_always)
+            self.approved += 1
+            log("✅ وافقتَ مرة", f"[{analysis.category}] {tool} {argument}".strip())
+
+        def approve_always() -> None:
+            self.memory.learn(tool, argument, "approve",
+                              analysis.category, analysis.intent)
+            log("📚 تعلّم", f"سيُقبل تلقائياً من الآن: {tool} {argument}".strip())
+            approve_once()
+
+        def reject_always() -> None:
+            self.memory.learn(tool, argument, "reject",
+                              analysis.category, analysis.intent)
+            log("📚 تعلّم", f"سيُرفض تلقائياً من الآن: {tool} {argument}".strip())
+            if self.live and is_foreground(hwnd):
+                self.send_deny()
+
+        return {
+            "once": approve_once,
+            "always": approve_always if analysis.learnable else None,
+            "never": reject_always,
+        }
 
     def _loop(self) -> None:
         while not self._stopped.is_set():
@@ -603,12 +726,14 @@ def main() -> int:
     print(f"  فحص كل        : {args.interval} ثانية")
     print(f"  تعديل الملفات : {'مرفوض' if args.no_edits else 'مقبول تلقائياً'}")
     print(f"  عند الرفض     : {'يرفض بنفسه (Esc)' if args.auto_deny else 'بطاقة حمراء والقرار لك'}")
+    memory = Memory().load()
+    print(f"  قرارات محفوظة : {len(memory.entries)} (راجعها بـ python memory.py)")
     print("  بلا صوت · Ctrl+Alt+S تشغيل/إيقاف · Ctrl+Alt+Q إنهاء")
     print("=" * 62)
 
     toasts = ToastManager(args.toast_seconds)
     guard = Guard(args.interval, live, not args.no_edits,
-                  args.auto_deny, keywords, toasts)
+                  args.auto_deny, keywords, toasts, memory)
     guard.start_background()
 
     try:

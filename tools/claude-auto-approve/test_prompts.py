@@ -109,13 +109,14 @@ def run() -> int:
             failures.append(
                 f"❌ [{name}] has_always={prompt.has_always} والمتوقّع {expect_always}"
             )
-        decision, command = evaluate(text)
-        status = "✅" if decision.verdict == expected else "❌"
-        if decision.verdict != expected:
+        decision, _tool, _arg = evaluate(text)
+        verdict = "approve" if decision.is_safe else "alert"
+        status = "✅" if verdict == expected else "❌"
+        if verdict != expected:
             failures.append(
-                f"❌ [{name}] القرار={decision.verdict} والمتوقّع={expected} ({decision.reason})"
+                f"❌ [{name}] القرار={verdict} والمتوقّع={expected} ({decision.reason})"
             )
-        print(f"  {status} {name:28} → {decision.verdict:8} | {decision.reason[:52]}")
+        print(f"  {status} {name:28} → {verdict:8} | {decision.intent[:52]}")
 
     print()
     for name, text in NO_PROMPT:
