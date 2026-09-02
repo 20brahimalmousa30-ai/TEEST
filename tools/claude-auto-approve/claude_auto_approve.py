@@ -81,41 +81,57 @@ def _user32():
     return ctypes.windll.user32
 
 
-def find_claude_window(keywords: tuple[str, ...]) -> tuple[int | None, str]:
-    """يبحث عن نافذة Claude Code بالاسم بين كل النوافذ الظاهرة.
-
-    لا يعتمد على النافذة النشطة — لذلك يبقى ملتصقاً بـ Claude Code
-    مهما تنقّل المستخدم بين التطبيقات.
-    """
+def enum_windows(include_untitled: bool = False) -> list[tuple[int, str, int]]:
+    """كل النوافذ الظاهرة: (المقبض، العنوان، معرّف العملية)."""
     try:
         user32 = _user32()
     except AttributeError:
-        return None, ""
+        return []
 
-    found: list[tuple[int, str]] = []
-    enum_proc = ctypes.WINFUNCTYPE(
-        ctypes.c_bool, wintypes.HWND, wintypes.LPARAM
-    )
+    found: list[tuple[int, str, int]] = []
+    enum_proc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
 
     def callback(hwnd, _lparam):
         if not user32.IsWindowVisible(hwnd):
             return True
         length = user32.GetWindowTextLengthW(hwnd)
-        if length == 0:
+        if length == 0 and not include_untitled:
             return True
         buffer = ctypes.create_unicode_buffer(length + 1)
         user32.GetWindowTextW(hwnd, buffer, length + 1)
-        title = buffer.value or ""
-        if any(word in title.lower() for word in keywords):
-            found.append((hwnd, title))
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        found.append((hwnd, buffer.value or "", pid.value))
         return True
 
     try:
         user32.EnumWindows(enum_proc(callback), 0)
     except Exception:
-        return None, ""
+        return []
+    return found
 
-    return found[0] if found else (None, "")
+
+def find_claude_windows(keywords: tuple[str, ...]) -> list[tuple[int, str]]:
+    """كل نوافذ Claude Code: المعنونة المطابقة، ثم شقيقاتها بلا عنوان.
+
+    طلب الإذن قد يُعرض في نافذةٍ منفصلة بلا عنوان، فالاكتفاء بأول نافذة
+    معنونة يجعل الحارس يقرأ الشريط الجانبي ولا يرى الطلب أبداً.
+
+    لا يعتمد على النافذة النشطة — لذلك يبقى ملتصقاً بـ Claude Code
+    مهما تنقّل المستخدم بين التطبيقات.
+    """
+    titled = enum_windows()
+    matches = [(hwnd, title, pid) for hwnd, title, pid in titled
+               if any(word in title.lower() for word in keywords)]
+    if not matches:
+        return []
+
+    pids = {pid for _hwnd, _title, pid in matches}
+    known = {hwnd for hwnd, _title, _pid in matches}
+    siblings = [(hwnd, title) for hwnd, title, pid in enum_windows(include_untitled=True)
+                if pid in pids and hwnd not in known]
+
+    return [(hwnd, title) for hwnd, title, _pid in matches] + siblings
 
 
 def is_foreground(hwnd: int) -> bool:
@@ -541,6 +557,8 @@ class Guard:
         self._handled_text = ""
         self._waiting_text = ""
         self._alert_showing = False
+        self._last_hwnd: int | None = None
+        self._last_note = ""
         self.approved = 0
         self.rejected = 0
 
@@ -568,23 +586,55 @@ class Guard:
         self._controller.release(key.esc)
 
     # -------------------------------------------------------------- الدورة
+    def _note(self, key: str, action: str, detail: str) -> None:
+        """يسجّل السطر مرة واحدة فقط عند تغيّر الحالة — لا يُغرق السجلّ."""
+        if self._last_note == key:
+            return
+        self._last_note = key
+        log(action, detail)
+
     def tick(self) -> None:
-        hwnd, _title = find_claude_window(self.keywords)
-        if hwnd is None:
+        windows = find_claude_windows(self.keywords)
+        if not windows:
+            self._note("no-window", "🔍 لا نافذة",
+                       f"لم أجد نافذة عنوانها يحتوي «{'/'.join(self.keywords)}»")
             return
 
-        try:
-            text = read_window_text(hwnd)
-        except RuntimeError as exc:
-            log("خطأ", str(exc))
-            self._running.clear()
-            return
+        # نجرّب النافذة التي حملت الطلب آخر مرة أولاً، ثم الباقي
+        if self._last_hwnd:
+            windows.sort(key=lambda item: 0 if item[0] == self._last_hwnd else 1)
 
-        if not text.strip():
+        hwnd = None
+        text = ""
+        for candidate, title in windows:
+            try:
+                candidate_text = read_window_text(candidate)
+            except RuntimeError as exc:
+                log("خطأ", str(exc))
+                self._running.clear()
+                return
+            except Exception:
+                continue
+
+            if not candidate_text.strip():
+                continue
+            if detect_prompt(candidate_text) is not None:
+                hwnd, text = candidate, candidate_text
+                self._last_hwnd = candidate
+                self._note(f"reading:{candidate}", "🔎 أقرأ",
+                           f"«{title[:50] or 'نافذة بلا عنوان'}» — {len(candidate_text)} حرفاً")
+                break
+            if not text:                       # أول نافذة تُعطي نصّاً، احتياطاً
+                hwnd, text = candidate, candidate_text
+
+        if hwnd is None or not text.strip():
+            self._note("no-text", "🔍 لا نصّ",
+                       f"وجدت {len(windows)} نافذة لكن لم أقرأ نصّاً منها")
             return
 
         prompt = detect_prompt(text)
         if prompt is None:
+            self._note("idle", "🔎 مراقبة", "النافذة مقروءة — لا طلب إذن معروض حالياً")
             # لم يعد هناك طلب معروض ⇒ حُسم الطلب في Claude Code، فتُخفى البطاقة.
             # ونمسح ذاكرة النصّ المعالَج حتى يُعامَل ظهور الأمر نفسه لاحقاً
             # كطلب جديد لا كتكرارٍ يُتجاهَل.

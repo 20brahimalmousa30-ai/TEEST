@@ -38,7 +38,7 @@ def build():
     guard = m.Guard(0.1, live=True, allow_edits=True, auto_deny=False,
                     keywords=("claude",), toasts=toasts, memory=store)
     state = {"text": IDLE}
-    m.find_claude_window = lambda _kw: (1, "Claude Code")
+    m.find_claude_windows = lambda _kw: [(1, "Claude Code")]
     m.read_window_text = lambda _hwnd: state["text"]
     m.is_foreground = lambda _hwnd: True
     guard.sent = []

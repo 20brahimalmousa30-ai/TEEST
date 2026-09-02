@@ -52,7 +52,7 @@ def run() -> int:
                     keywords=("claude",), toasts=toasts, memory=store)
 
     state = {"text": IDLE, "focused": True}
-    m.find_claude_window = lambda _kw: (1, "Claude Code")
+    m.find_claude_windows = lambda _kw: [(1, "Claude Code")]
     m.read_window_text = lambda _hwnd: state["text"]
     m.is_foreground = lambda _hwnd: state["focused"]
     guard.send_approve = lambda always: toasts.events.append(("approve", always))
