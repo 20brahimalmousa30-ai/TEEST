@@ -29,7 +29,7 @@ import threading
 import time
 from pathlib import Path
 
-from classifier import Decision, classify_request, find_danger
+from classifier import Cat, Decision, classify_request, find_danger
 
 LOG_PATH = Path(__file__).with_name("auto_approve.log")
 
@@ -180,13 +180,14 @@ def evaluate(text: str, allow_edits: bool = True) -> tuple[Decision, str | None]
     #    حتى لو فشل استخراج الأمر أو ورد الخطر في سطر وصفيّ.
     danger = find_danger(text)
     if danger:
-        rule_id, why, matched = danger
-        return Decision("alert", why, rule_id, matched), None
+        rule_id, category, why, matched = danger
+        return Decision("alert", category, why, rule_id, matched), None
 
     # 2) استخراج (الأداة، المُعامل)
     request = extract_request(text)
     if request is None:
-        return Decision("alert", "تعذّر استخراج نصّ الطلب بثقة", "no-request"), None
+        return Decision("alert", Cat.UNREADABLE,
+                        "تعذّرت قراءة نصّ الطلب — لم أوافق احتياطاً", "no-request"), None
 
     tool, argument = request
     label = f"{tool} {argument}".strip()
@@ -229,16 +230,19 @@ def show_red_alert(decision: Decision, command: str | None) -> None:
             outline="#e02424", width=thickness,
         )
 
-        label = f"⚠ طلب يحتاج مراجعتك: {decision.reason}"
-        if command:
-            label += f"\n{command[:120]}"
-        elif decision.matched:
-            label += f"\n{decision.matched[:120]}"
+        subject = command or decision.matched or ""
+        label = (
+            f"⛔ رُفض الطلب\n"
+            f"التصنيف: {decision.category}\n"
+            f"السبب: {decision.reason}"
+        )
+        if subject:
+            label += f"\n\n{subject[:140]}"
         label += "\n\n(اضغط أيّ مفتاح لإخفاء التنبيه)"
 
         canvas.create_text(
-            width // 2, 60, text=label, fill="#e02424",
-            font=("Segoe UI", 16, "bold"), justify="center",
+            width // 2, 90, text=label, fill="#e02424",
+            font=("Segoe UI", 15, "bold"), justify="center",
         )
 
         root.bind("<Key>", lambda _event: root.destroy())
@@ -265,10 +269,13 @@ def log(action: str, detail: str) -> None:
 
 # =================================================================== الأداة
 class AutoApprover:
-    def __init__(self, interval: float, live: bool, allow_edits: bool = True) -> None:
+    def __init__(self, interval: float, live: bool, allow_edits: bool = True,
+                 auto_deny: bool = False, pause_on_deny: bool = True) -> None:
         self.interval = interval
         self.live = live
         self.allow_edits = allow_edits
+        self.auto_deny = auto_deny
+        self.pause_on_deny = pause_on_deny
         self._running = threading.Event()
         self._stopped = threading.Event()
         self._last_text = ""
@@ -280,6 +287,12 @@ class AutoApprover:
         self._controller = keyboard.Controller()
 
     # ------------------------------------------------------------- الضغط
+    def send_deny(self) -> None:
+        """يرسل مفتاح الرفض (Esc) لإغلاق نافذة الإذن."""
+        key = self._keyboard.Key
+        self._controller.press(key.esc)
+        self._controller.release(key.esc)
+
     def send(self, always: bool) -> None:
         """يرسل اختصار الموافقة. always=True ⇒ Ctrl+Shift+Enter."""
         key = self._keyboard.Key
@@ -316,22 +329,30 @@ class AutoApprover:
 
         self._last_text = text
         decision, command = evaluate(text, self.allow_edits)
+        subject = command or decision.matched or "(غير معروف)"
 
-        if not decision.is_safe:
-            self.alerted += 1
-            log("تنبيه ⛔", f"{decision.reason} | {decision.matched[:80]}")
-            show_red_alert(decision, command)
-            self._running.clear()   # توقّف حتى يراجع المستخدم
-            log("إيقاف", "الأداة متوقّفة — راجع الطلب ثم Ctrl+Alt+S للاستئناف")
+        if decision.is_safe:
+            choice = "Always allow" if prompt.has_always else "الخيار الوحيد"
+            if self.live:
+                self.send(always=prompt.has_always)
+                self.approved += 1
+                log("✅ قبول", f"[{decision.category}] {subject}  →  {choice}")
+            else:
+                log("👁 معاينة", f"[{decision.category}] {subject}  →  كنت سأضغط {choice}")
             return
 
-        choice = "Always allow" if prompt.has_always else "الخيار الوحيد"
-        if self.live:
-            self.send(always=prompt.has_always)
-            self.approved += 1
-            log("موافقة ✅", f"{choice} | {command}")
-        else:
-            log("مراقبة 👁", f"كنت سأضغط [{choice}] | {command}")
+        # مرفوض
+        self.alerted += 1
+        log("⛔ رفض", f"[{decision.category}] {subject}")
+        log("   السبب", decision.reason)
+        show_red_alert(decision, command)
+
+        if self.live and self.auto_deny:
+            self.send_deny()
+            log("   الإجراء", "أُرسل الرفض (Esc)")
+        elif self.pause_on_deny:
+            self._running.clear()
+            log("   الإجراء", "توقّفت الأداة — قرّر بنفسك ثم Ctrl+Alt+S للاستئناف")
 
     def _loop(self) -> None:
         while not self._stopped.is_set():
@@ -354,7 +375,7 @@ class AutoApprover:
             log("إيقاف مؤقّت", "Ctrl+Alt+S للاستئناف")
         else:
             self._running.set()
-            mode = "تشغيل فعلي" if self.live else "مراقبة فقط"
+            mode = "فعّال" if self.live else "معاينة"
             log("تشغيل", f"الوضع: {mode}")
 
     def stop(self) -> None:
@@ -415,27 +436,36 @@ def main() -> int:
     )
     parser.add_argument("-i", "--interval", type=float, default=3.0,
                         help="الفاصل بين الفحوص بالثواني (الافتراضي: 3)")
-    parser.add_argument("--live", action="store_true",
-                        help="فعّل الضغط الحقيقي (بدونه: مراقبة وتسجيل فقط)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="معاينة فقط: يعرض قراره دون أن يضغط شيئاً")
     parser.add_argument("--no-edits", action="store_true",
                         help="لا توافق تلقائياً على كتابة/تعديل الملفات")
+    parser.add_argument("--auto-deny", action="store_true",
+                        help="عند الرفض اضغط Esc تلقائياً بدل انتظار قرارك")
+    parser.add_argument("--no-pause", action="store_true",
+                        help="لا تتوقّف بعد الرفض؛ تابع الفحص")
     args = parser.parse_args()
 
     if sys.platform != "win32":
         print("تحذير: هذه الأداة مصمّمة لويندوز؛ قراءة النوافذ لن تعمل هنا.")
 
-    mode = "⚡ تشغيل فعلي — سيضغط الموافقة" if args.live else "👁 مراقبة فقط — لن يضغط شيئاً"
+    live = not args.dry_run
+    mode = "⚡ فعّال — يقبل ويرفض" if live else "👁 معاينة — لا يضغط شيئاً"
+    on_deny = ("يضغط Esc تلقائياً" if args.auto_deny
+               else ("يتوقّف لتقرّر بنفسك" if not args.no_pause else "ينبّه ويتابع"))
     print("=" * 60)
     print("  حارس أذونات Claude Code")
     print("=" * 60)
     print(f"  الوضع        : {mode}")
     print(f"  فحص كل       : {args.interval} ثانية")
     print(f"  تعديل الملفات: {'مرفوض — يسألك' if args.no_edits else 'مقبول تلقائياً'}")
+    print(f"  عند الرفض    : {on_deny}")
     print(f"  السجلّ        : {LOG_PATH}")
     print("  Ctrl+Alt+S = تشغيل/إيقاف   |   Ctrl+Alt+Q = إنهاء")
     print("=" * 60)
 
-    AutoApprover(args.interval, args.live, not args.no_edits).run()
+    AutoApprover(args.interval, live, not args.no_edits,
+                 args.auto_deny, not args.no_pause).run()
     return 0
 
 
