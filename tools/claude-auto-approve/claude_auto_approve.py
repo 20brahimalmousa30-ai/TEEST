@@ -606,6 +606,7 @@ class Guard:
 
         hwnd = None
         text = ""
+        read_title = ""
         for candidate, title in windows:
             try:
                 candidate_text = read_window_text(candidate)
@@ -625,7 +626,7 @@ class Guard:
                            f"«{title[:50] or 'نافذة بلا عنوان'}» — {len(candidate_text)} حرفاً")
                 break
             if not text:                       # أول نافذة تُعطي نصّاً، احتياطاً
-                hwnd, text = candidate, candidate_text
+                hwnd, text, read_title = candidate, candidate_text, title
 
         if hwnd is None or not text.strip():
             self._note("no-text", "🔍 لا نصّ",
@@ -634,7 +635,14 @@ class Guard:
 
         prompt = detect_prompt(text)
         if prompt is None:
-            self._note("idle", "🔎 مراقبة", "النافذة مقروءة — لا طلب إذن معروض حالياً")
+            # نُدرج المقبض والحجم في المفتاح ليُعاد التسجيل لو تغيّرت
+            # النافذة أو قفز حجم النصّ — بهذا نعرف أنقرأ اللوحة الصحيحة.
+            self._note(
+                f"idle:{hwnd}:{len(text) // 500}",
+                "🔎 مراقبة",
+                f"أقرأ «{read_title[:40] or 'نافذة بلا عنوان'}» "
+                f"({len(windows)} نافذة، {len(text)} حرفاً) — لا طلب معروض",
+            )
             # لم يعد هناك طلب معروض ⇒ حُسم الطلب في Claude Code، فتُخفى البطاقة.
             # ونمسح ذاكرة النصّ المعالَج حتى يُعامَل ظهور الأمر نفسه لاحقاً
             # كطلب جديد لا كتكرارٍ يُتجاهَل.
