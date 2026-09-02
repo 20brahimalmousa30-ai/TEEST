@@ -81,8 +81,21 @@ def _user32():
     return ctypes.windll.user32
 
 
+# نوافذ لا يمكن أن تحمل طلب إذن، وقد يطابق عنوانها الكلمة المفتاحية
+# لمجرّد أنه يعرض اسم ملفّ من ملفات الأداة (مفكرة، مستكشف، طرفية…).
+EXCLUDED_CLASSES = {
+    "notepad",                          # المفكرة
+    "cabinetwclass", "explorewclass",   # مستكشف الملفات ونتائج البحث
+    "consolewindowclass",               # موجّه الأوامر
+    "casadia_hosting_window_class",
+    "cascadia_hosting_window_class",    # Windows Terminal
+    "shell_traywnd", "progman",         # شريط المهام وسطح المكتب
+    "tkTopLevel".lower(),               # بطاقات الأداة نفسها
+}
+
+
 def enum_windows(include_untitled: bool = False) -> list[tuple[int, str, int]]:
-    """كل النوافذ الظاهرة: (المقبض، العنوان، معرّف العملية)."""
+    """كل النوافذ الظاهرة الصالحة: (المقبض، العنوان، معرّف العملية)."""
     try:
         user32 = _user32()
     except AttributeError:
@@ -97,6 +110,12 @@ def enum_windows(include_untitled: bool = False) -> list[tuple[int, str, int]]:
         length = user32.GetWindowTextLengthW(hwnd)
         if length == 0 and not include_untitled:
             return True
+
+        class_buf = ctypes.create_unicode_buffer(256)
+        user32.GetClassNameW(hwnd, class_buf, 256)
+        if (class_buf.value or "").lower() in EXCLUDED_CLASSES:
+            return True
+
         buffer = ctypes.create_unicode_buffer(length + 1)
         user32.GetWindowTextW(hwnd, buffer, length + 1)
         pid = wintypes.DWORD()
