@@ -26,7 +26,8 @@ LINES: list[str] = []
 
 MARKERS = ("always allow", "allow once", "deny", "do you want", "proceed")
 
-SURVEY_DEPTH, SURVEY_NODES = 14, 250      # مسح سريع
+SURVEY_DEPTH, SURVEY_NODES = 32, 600      # مسح سريع — عميق بما يكفي
+                                          # لبلوغ محتوى تطبيقات Electron
 DEEP_DEPTH, DEEP_NODES = 60, 4000         # قراءة كاملة
 
 
@@ -140,7 +141,16 @@ def main() -> int:
     # ------------------------------------------- المرحلة ٢: قراءة عميقة
     with_markers = [row for row in surveyed if row[2]]
     richest = [row for row in surveyed if row[0] > 0][:3]
-    targets = with_markers or richest
+
+    # أيّ نافذة عنوانها يحتوي «claude» تُقرأ بعمق مهما بدت فقيرة في المسح
+    # السريع — محتوى تطبيقات Electron يقع عميقاً وقد يخدع القياس السطحي.
+    named = [row for row in surveyed
+             if "claude" in row[3].lower() and row not in with_markers]
+
+    targets = with_markers + named if with_markers else richest + named
+    seen: set = set()
+    targets = [row for row in targets
+               if not (row[1] in seen or seen.add(row[1]))]
 
     if not targets:
         say("\n⛔ لم تُعطِ أيّ نافذة نصّاً. التطبيق لا يكشف محتواه لـ UI Automation.")
