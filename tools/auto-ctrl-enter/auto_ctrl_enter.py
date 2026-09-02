@@ -9,8 +9,11 @@
     python auto_ctrl_enter.py -k alt+s   # اختصار آخر بدل Ctrl+Enter
 
 أثناء العمل:
-    F8   تشغيل / إيقاف مؤقّت
-    F9   إنهاء الأداة (أو Ctrl+C في نافذة الطرفية)
+    Ctrl+Alt+S   تشغيل / إيقاف مؤقّت   (أو F8)
+    Ctrl+Alt+Q   إنهاء الأداة           (أو F9 أو Ctrl+C)
+
+ملاحظة: في كثير من اللابتوبات تكون مفاتيح F مخصّصة لوظائف الجهاز
+(وضع الطيران، الصوت...)، لذلك استخدم Ctrl+Alt+S و Ctrl+Alt+Q.
 """
 
 from __future__ import annotations
@@ -60,6 +63,28 @@ SPECIAL_KEYS = {
     "pagedown": keyboard.Key.page_down,
 }
 SPECIAL_KEYS.update({f"f{i}": getattr(keyboard.Key, f"f{i}") for i in range(1, 13)})
+
+# مجموعات تُستخدم لتتبّع المُعدِّلات المضغوطة أثناء رصد اختصارات التحكّم
+CTRL_KEYS = {keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r}
+ALT_KEYS = {
+    keyboard.Key.alt,
+    keyboard.Key.alt_l,
+    keyboard.Key.alt_r,
+    getattr(keyboard.Key, "alt_gr", keyboard.Key.alt),
+}
+
+
+def is_letter(key, letter: str) -> bool:
+    """هل المفتاح المضغوط هو الحرف المطلوب؟ يتعامل مع حالة الضغط مع Ctrl."""
+    char = getattr(key, "char", None)
+    if char:
+        if char.lower() == letter:
+            return True
+        # Ctrl+حرف يُنتج حرف تحكّم (مثل \x13 لـ Ctrl+S)
+        if len(char) == 1 and ord(char) == ord(letter) - 96:
+            return True
+    vk = getattr(key, "vk", None)
+    return vk is not None and vk == ord(letter.upper())
 
 
 def parse_combo(combo: str) -> tuple[list, object]:
@@ -136,10 +161,10 @@ class AutoPresser:
     def toggle(self) -> None:
         if self._running.is_set():
             self._running.clear()
-            print("\n[متوقّف مؤقتاً] اضغط F8 للاستئناف.", flush=True)
+            print("\n[متوقّف مؤقتاً] اضغط Ctrl+Alt+S للاستئناف.", flush=True)
         else:
             self._running.set()
-            print("\n[يعمل] اضغط F8 للإيقاف المؤقت، F9 للإنهاء.", flush=True)
+            print("\n[يعمل] Ctrl+Alt+S = إيقاف مؤقّت | Ctrl+Alt+Q = إنهاء.", flush=True)
 
     def stop(self) -> None:
         self._running.clear()
@@ -153,16 +178,29 @@ class AutoPresser:
         worker = threading.Thread(target=self._loop, daemon=True)
         worker.start()
 
+        held = set()
+
         def on_press(key):
-            if key == keyboard.Key.f8:
+            if key in CTRL_KEYS or key in ALT_KEYS:
+                held.add(key)
+                return None
+
+            ctrl = bool(held & CTRL_KEYS)
+            alt = bool(held & ALT_KEYS)
+
+            if key == keyboard.Key.f8 or (ctrl and alt and is_letter(key, "s")):
                 self.toggle()
-            elif key == keyboard.Key.f9:
-                print("\nإنهاء بطلب المستخدم (F9).")
+            elif key == keyboard.Key.f9 or (ctrl and alt and is_letter(key, "q")):
+                print("\nإنهاء بطلب المستخدم.")
                 self.stop()
                 return False  # أوقِف المستمع
             return None
 
-        listener = keyboard.Listener(on_press=on_press)
+        def on_release(key):
+            held.discard(key)
+            return None
+
+        listener = keyboard.Listener(on_press=on_press, on_release=on_release)
         listener.start()
 
         if start_now:
@@ -171,7 +209,7 @@ class AutoPresser:
                 time.sleep(1)
             self.toggle()
         else:
-            print("جاهز. اضغط F8 للبدء.", flush=True)
+            print("جاهز. اضغط Ctrl+Alt+S للبدء.", flush=True)
 
         try:
             while not self.stopped:
@@ -189,7 +227,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="تكرار ضغطة اختصار لوحة المفاتيح (افتراضياً Ctrl+Enter) كل عدد من الثواني.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="أثناء التشغيل:  F8 = تشغيل/إيقاف مؤقّت   |   F9 = إنهاء",
+        epilog="أثناء التشغيل:  Ctrl+Alt+S = تشغيل/إيقاف مؤقّت   |   Ctrl+Alt+Q = إنهاء",
     )
     parser.add_argument("-i", "--interval", type=float, default=3.0,
                         help="الفاصل الزمني بالثواني (الافتراضي: 3)")
@@ -200,7 +238,7 @@ def main() -> int:
     parser.add_argument("-d", "--delay", type=float, default=3.0,
                         help="مهلة العدّ التنازلي قبل البدء بالثواني (الافتراضي: 3)")
     parser.add_argument("--wait", action="store_true",
-                        help="لا تبدأ تلقائياً؛ انتظر ضغط F8")
+                        help="لا تبدأ تلقائياً؛ انتظر ضغط Ctrl+Alt+S")
     args = parser.parse_args()
 
     if args.interval <= 0:
@@ -220,7 +258,8 @@ def main() -> int:
     print(f"  الاختصار      : {args.keys}")
     print(f"  كل            : {args.interval} ثانية")
     print(f"  عدد الضغطات   : {'بلا حدّ' if not args.count else args.count}")
-    print("  F8 = تشغيل/إيقاف مؤقّت   |   F9 = إنهاء")
+    print("  Ctrl+Alt+S = تشغيل/إيقاف مؤقّت   |   Ctrl+Alt+Q = إنهاء")
+    print("  (يعمل أيضاً F8 و F9 إن لم تكن محجوزة لوظائف اللابتوب)")
     print("=" * 52)
 
     presser.run(start_now=not args.wait, countdown=args.delay)

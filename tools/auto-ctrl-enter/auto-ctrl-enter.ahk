@@ -1,10 +1,14 @@
 ; ================================================================
 ;  أداة تكرار Ctrl+Enter كل 3 ثوانٍ  —  AutoHotkey v2
-;  لا تحتاج بايثون. حمّل AutoHotkey v2 من autohotkey.com ثم
+;  لا تحتاج بايثون. ثبّت AutoHotkey v2 من autohotkey.com ثم
 ;  انقر نقراً مزدوجاً على هذا الملف.
 ;
-;  F8 = تشغيل / إيقاف مؤقّت
-;  F9 = إنهاء الأداة
+;  تشغيل / إيقاف مؤقّت :  Ctrl+Alt+S     (أو F8)
+;  إنهاء الأداة        :  Ctrl+Alt+Q     (أو F9)
+;
+;  ملاحظة: في كثير من اللابتوبات تكون مفاتيح F مخصّصة لوظائف
+;  الجهاز (وضع الطيران، الصوت...)، لذلك استخدم Ctrl+Alt+S
+;  و Ctrl+Alt+Q فهي تعمل دائماً.
 ; ================================================================
 
 #Requires AutoHotkey v2.0
@@ -18,24 +22,33 @@ global Combo      := "^{Enter}" ; ^ = Ctrl ، ! = Alt ، + = Shift ، # = Win
 global Running := false
 global SentCount := 0
 
-Notify("جاهز — اضغط F8 للبدء، F9 للإنهاء", 2500)
+Notify("جاهز — Ctrl+Alt+S للبدء | Ctrl+Alt+Q للإنهاء", 4000)
 
-F8:: {
-    global Running, IntervalMs
+; --- اختصارات التشغيل/الإيقاف ---
+^!s::ToggleRun()
+F8::ToggleRun()
+
+; --- اختصارات الإنهاء ---
+^!q::QuitApp()
+F9::QuitApp()
+
+ToggleRun() {
+    global Running, IntervalMs, SentCount
     Running := !Running
     if (Running) {
         SetTimer(SendCombo, IntervalMs)
         Notify("يعمل ▶  كل " . (IntervalMs / 1000) . " ثانية", 1500)
     } else {
         SetTimer(SendCombo, 0)
-        Notify("متوقّف ⏸  (F8 للاستئناف)", 1500)
+        Notify("متوقّف ⏸  (" . SentCount . " ضغطة) — Ctrl+Alt+S للاستئناف", 2000)
     }
 }
 
-F9:: {
+QuitApp() {
     global SentCount
-    Notify("إنهاء — إجمالي الضغطات: " . SentCount, 1000)
-    Sleep(1000)
+    SetTimer(SendCombo, 0)
+    Notify("إنهاء — إجمالي الضغطات: " . SentCount, 1200)
+    Sleep(1200)
     ExitApp()
 }
 
