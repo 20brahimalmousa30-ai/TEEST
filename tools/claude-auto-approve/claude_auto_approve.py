@@ -247,7 +247,8 @@ class ToastManager:
     MARGIN = 18
     GAP = 10
 
-    def __init__(self, seconds: float = 12.0) -> None:
+    def __init__(self, seconds: float = 0.0) -> None:
+        # 0 = تبقى البطاقة حتى تُحسم في Claude Code أو تُنقر
         self.seconds = seconds
         self.queue: queue.Queue = queue.Queue()
         self._root = None
@@ -255,8 +256,12 @@ class ToastManager:
 
     # --------------------------------------------------------- الواجهة العامة
     def notify(self, decision: Decision, subject: str) -> None:
-        """يُستدعى من أي خيط — يضع البطاقة في الطابور فقط."""
-        self.queue.put((decision, subject))
+        """يُستدعى من أي خيط — يضع طلب عرض البطاقة في الطابور."""
+        self.queue.put(("show", decision, subject))
+
+    def resolve_all(self) -> None:
+        """يُخفي كل البطاقات — يُستدعى حين يختفي الطلب من نافذة Claude Code."""
+        self.queue.put(("hide", None, None))
 
     def run(self, should_stop) -> None:
         """يُشغَّل في الخيط الرئيسي: حلقة tkinter مع فحص الطابور."""
@@ -271,11 +276,14 @@ class ToastManager:
                 return
             while True:
                 try:
-                    decision, subject = self.queue.get_nowait()
+                    action, decision, subject = self.queue.get_nowait()
                 except queue.Empty:
                     break
                 try:
-                    self._build_card(decision, subject)
+                    if action == "show":
+                        self._build_card(decision, subject)
+                    else:
+                        self._clear_cards()
                 except Exception:
                     pass
             self._root.after(200, pump)
@@ -312,7 +320,7 @@ class ToastManager:
                      font=("Consolas", 9), anchor="e", justify="right",
                      wraplength=self.WIDTH - 40).pack(fill="x", pady=(8, 0))
 
-        tk.Label(body, text="قرّر بنفسك في نافذة Claude Code · انقر لإخفاء البطاقة",
+        tk.Label(body, text="تختفي حين تختار في نافذة Claude Code · أو انقرها الآن",
                  bg="#171717", fg="#737373", font=("Segoe UI", 8), anchor="e",
                  justify="right").pack(fill="x", pady=(10, 0))
 
@@ -328,9 +336,19 @@ class ToastManager:
         card.bind("<Button-1>", dismiss)
         for child in body.winfo_children():
             child.bind("<Button-1>", dismiss)
-        card.after(int(self.seconds * 1000), dismiss)
+        if self.seconds > 0:
+            card.after(int(self.seconds * 1000), dismiss)
 
         self._cards.append(card)
+
+    def _clear_cards(self) -> None:
+        """يُغلق كل البطاقات المعروضة."""
+        for card in list(self._cards):
+            try:
+                card.destroy()
+            except Exception:
+                pass
+        self._cards.clear()
 
     def _place(self, card) -> None:
         left, top, right, bottom = cursor_work_area()
@@ -384,6 +402,7 @@ class Guard:
         self._stopped = threading.Event()
         self._handled_text = ""
         self._waiting_text = ""
+        self._alert_showing = False
         self.approved = 0
         self.rejected = 0
 
@@ -423,11 +442,19 @@ class Guard:
             self._running.clear()
             return
 
-        if not text.strip() or text == self._handled_text:
+        if not text.strip():
             return
 
         prompt = detect_prompt(text)
         if prompt is None:
+            # لم يعد هناك طلب معروض ⇒ حُسم الطلب في Claude Code، فتُخفى البطاقة
+            if self._alert_showing:
+                self.toasts.resolve_all()
+                self._alert_showing = False
+                log("↩ حُسم", "اختفى الطلب من النافذة — أُخفيت البطاقة")
+            return
+
+        if text == self._handled_text:
             return
 
         decision, request = evaluate(text, self.allow_edits)
@@ -462,7 +489,11 @@ class Guard:
         log("⛔ رفض", f"[{decision.category}] {subject}")
         log("   السبب", decision.reason)
 
+        # أخفِ بطاقة الطلب السابق قبل عرض الجديدة
+        if self._alert_showing:
+            self.toasts.resolve_all()
         self.toasts.notify(decision, subject)
+        self._alert_showing = True
 
         if self.live and self.auto_deny:
             if is_foreground(hwnd):
@@ -553,8 +584,9 @@ def main() -> int:
                         help="لا توافق تلقائياً على كتابة/تعديل الملفات")
     parser.add_argument("--window", default="claude",
                         help="جزء من عنوان نافذة Claude Code (الافتراضي: claude)")
-    parser.add_argument("--toast-seconds", type=float, default=12.0,
-                        help="مدة بقاء البطاقة الحمراء بالثواني (الافتراضي: 12)")
+    parser.add_argument("--toast-seconds", type=float, default=0.0,
+                        help="إخفاء البطاقة بعد عدد ثوانٍ. الافتراضي 0 = تبقى "
+                             "حتى تختار في Claude Code أو تنقرها")
     args = parser.parse_args()
 
     if sys.platform != "win32":
